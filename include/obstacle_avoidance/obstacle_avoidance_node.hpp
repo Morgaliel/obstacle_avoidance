@@ -15,6 +15,8 @@
 #ifndef OBSTACLE_AVOIDANCE__OBSTACLE_AVOIDANCE_NODE_HPP_
 #define OBSTACLE_AVOIDANCE__OBSTACLE_AVOIDANCE_NODE_HPP_
 
+#define M_PI       3.14159265358979323846  /* pi */
+
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 
@@ -22,6 +24,12 @@
 #include "geometry_msgs/msg/pose.hpp"
 #include "autoware_auto_planning_msgs/msg/trajectory.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/point_stamped.hpp"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2/LinearMath/Matrix3x3.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "tf2/utils.h"
+
 
 #include "obstacle_avoidance/obstacle_avoidance.hpp"
 
@@ -37,17 +45,25 @@ public:
   void subscribeToTrajectory();
   void subscribeToCarPose();
 
+
+  geometry_msgs::msg::Pose getPose(const autoware_auto_planning_msgs::msg::Trajectory & traj, const int idx);
+  double calcDist2d(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b);
+  double normalizeEulerAngle(double euler);
+  bool calcClosestIndex(const autoware_auto_planning_msgs::msg::Trajectory & traj, const geometry_msgs::msg::Pose & pose,
+  size_t & output_closest_idx, const double dist_thr = 10.0, const double angle_thr = M_PI_4);
+
 private:
   ObstacleAvoidancePtr obstacle_avoidance_{nullptr};
   int64_t param_name_{123};
-  std::array<geometry_msgs::msg::Pose, 10> poses_array;
+  autoware_auto_planning_msgs::msg::Trajectory trajectory_;
+  std::array<geometry_msgs::msg::Pose, 270> poses_array;
   // std::array<float, 1080> distances_array; //1080 pktow +- 135 stopni
   geometry_msgs::msg::Pose car_pose;
   
-
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_subscriber_;
   rclcpp::Subscription<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr trajectory_subscriber_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr car_pose_subscriber_;
+  rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr obstacle_publisher_;
 
 };
 }  // namespace obstacle_avoidance
