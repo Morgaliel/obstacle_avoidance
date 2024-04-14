@@ -119,19 +119,23 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
           tf2::Matrix3x3 m(q);
           double roll, pitch, yaw;
           m.getRPY(roll, pitch, yaw);
+          size_t self_idx;
+          const auto & current_pose = car_pose;  
+          const auto & trajectory = trajectory_;
+          // autoware_auto_planning_msgs::msg::Trajectory trajectory = trajectory_;
+          
+          calcClosestIndex(trajectory, current_pose, self_idx);
+          // current_pose = trajectory.at(self_idx+30).pose;
 
+          std::cout << "self_idx: " << self_idx << std::endl;
           
 
           for (int i = 0; i < msg->ranges.size(); i++)
           {
             float angle = i * angle_increment + msg->angle_min;
 
-            
             float x = msg->ranges[i] * cos(angle) + 0.35; //car 
             float y = msg->ranges[i] * sin(angle); // car
-
-
-
             //rotate the point to the car frame
             float x_car = x * cos(yaw) - y * sin(yaw);
             float y_car = x * sin(yaw) + y * cos(yaw);
@@ -149,9 +153,10 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
             // std::cout << "----------------" << std::endl;
 
             // check if point is in the trajectory
-            for (int j = 0; j < poses_array.size(); j++)
+            for (int j = self_idx; j < (self_idx+30)%270; j++)
             {
-              float distance = sqrt(pow(x - poses_array[j].position.x, 2) + pow(y - poses_array[j].position.y, 2));
+              auto temp_pose = trajectory.points.at(j).pose;
+              float distance = sqrt(pow(x - temp_pose.position.x, 2) + pow(y - temp_pose.position.y, 2));
               if (distance < 0.05)
               {
                 // obstacle detected
@@ -184,17 +189,8 @@ void ObstacleAvoidanceNode::subscribeToTrajectory()
         [this](const autoware_auto_planning_msgs::msg::Trajectory::SharedPtr msg) {
             // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
             // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
-          // trajectory_ = msg;
-          size_t self_idx;
-          const auto & current_pose = car_pose;  
-          const auto & trajectory = *msg;
-          // autoware_auto_planning_msgs::msg::Trajectory trajectory = trajectory_;
+          trajectory_ = *msg;
           
-          calcClosestIndex(trajectory, current_pose, self_idx);
-          current_pose = trajectory.at(self_idx+30).pose;
-
-          std::cout << "self_idx: " << self_idx << std::endl;
-
           for (int i = 0; i < msg->points.size(); i++)
           {
             poses_array[i] = msg->points[i].pose;
