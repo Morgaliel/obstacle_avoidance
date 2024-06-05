@@ -18,7 +18,7 @@ namespace obstacle_avoidance
 {
 
 ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options)
-:  Node("obstacle_avoidance", options)
+:  Node("obstacle_avoidance", options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
 {
   obstacle_avoidance_ = std::make_unique<obstacle_avoidance::ObstacleAvoidance>();
   param_name_ = this->declare_parameter("param_name", 456);
@@ -27,9 +27,14 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   obstacle_publisher_ = this->create_publisher<geometry_msgs::msg::PointStamped>("/obstacle_point", 100);
   
   // Subskrybuj temat /sensing/lidar/scan
-  subscribeToCarPose();
+  // subscribeToCarPose();
   subscribeToLaserScan();
   subscribeToTrajectory(); // 10 punktów, globalne współrzędne 
+
+  // Initialize tf2 listener timer
+  timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&ObstacleAvoidanceNode::on_timer, this));
+  // tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+
 }
 
 geometry_msgs::msg::Pose ObstacleAvoidanceNode::getPose(
@@ -65,6 +70,10 @@ bool ObstacleAvoidanceNode::calcClosestIndex(
   int closest_idx = -1;
 
   for (int i = 0; i < static_cast<int>(traj.points.size()); ++i) {
+    if (pose.position.x == -0.0097019 and pose.position.y == -0.580195)
+    {
+      continue;
+    }
     const double dist = calcDist2d(getPose(traj, i).position, pose.position);
 
     /* check distance threshold */
@@ -76,9 +85,9 @@ bool ObstacleAvoidanceNode::calcClosestIndex(
     double yaw_i = tf2::getYaw(getPose(traj, i).orientation);
     double yaw_diff = normalizeEulerAngle(yaw_pose - yaw_i);
 
-    if (std::fabs(yaw_diff) > angle_thr) {
-      continue;
-    }
+    // if (std::fabs(yaw_diff) > angle_thr) {
+    //   continue;
+    // }
 
     if (dist < dist_min) {
       dist_min = dist;
@@ -110,6 +119,7 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
           //   distances_array[i] = msg->ranges[i];
           // }
 
+          std::cout << "before calc idx" << car_pose.position.x << " " << car_pose.position.y << std::endl;
           // define scan start global angle
           // float start_angle = msg->angle_min - car_pose.orientation.z;
           float angle_increment = msg->angle_increment;
@@ -128,50 +138,93 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
           // current_pose = trajectory.at(self_idx+30).pose;
 
           std::cout << "self_idx: " << self_idx << std::endl;
+          std::cout << car_pose.position.x << " " << car_pose.position.y << std::endl;
           
-
-          for (int i = 0; i < msg->ranges.size(); i++)
+          
+          //trajectory points
+          for (int j = self_idx; j < (self_idx+30)%270; j++)
           {
-            float angle = i * angle_increment + msg->angle_min;
+            auto temp_pose = trajectory.points.at(j).pose;
+            // std::cout << "tr_point: " << j << std::endl;
+            //create float vector of points (x,y)
+            // std::vector<std::pair<float, float>> points;
 
-            float x = msg->ranges[i] * cos(angle) + 0.35; //car 
-            float y = msg->ranges[i] * sin(angle); // car
-            //rotate the point to the car frame
-            float x_car = x * cos(yaw) - y * sin(yaw);
-            float y_car = x * sin(yaw) + y * cos(yaw);
-
-            x = x_car + car_pose.position.x;
-            y = y_car + car_pose.position.y;
-
-            // std::cout << "car orientation: " << car_pose.orientation.z << std::endl;
-            // std::cout << "yaw: " << yaw << std::endl;
-            // std::cout << "angle: " << angle << std::endl;
-            // std::cout << "range: " << msg->ranges[i] << std::endl;
-            // std::cout << "x_car: " << x_car << " y_car: " << y_car << std::endl;
-            // std::cout << "car x: " << car_pose.position.x << " car y: " << car_pose.position.y << std::endl;
-            // std::cout << "x: " << x << " y: " << y << std::endl;
-            // std::cout << "----------------" << std::endl;
-
-            // check if point is in the trajectory
-            for (int j = self_idx; j < (self_idx+30)%270; j++)
+            // laser scan points
+            for (int i = 360; i < msg->ranges.size()-360; i++)
             {
-              auto temp_pose = trajectory.points.at(j).pose;
+              int counter = 0;
+              float angle = i * angle_increment + msg->angle_min;
+              // std::cout << "i: " << i << " angle: " << angle << std::endl;
+
+              float x = msg->ranges[i] * cos(angle) + 0.35; //car 
+              float y = msg->ranges[i] * sin(angle); // car
+              //rotate the point to the car frame
+              float x_car = x * cos(yaw) - y * sin(yaw);
+              float y_car = x * sin(yaw) + y * cos(yaw);
+
+              x = x_car + car_pose.position.x;
+              y = y_car + car_pose.position.y;
+
+              // points.push_back(std::make_pair(x, y));
+              
               float distance = sqrt(pow(x - temp_pose.position.x, 2) + pow(y - temp_pose.position.y, 2));
               if (distance < 0.05)
               {
+                
+
+                // for (int k = 0; k < msg->ranges.size(); k++) 
+                // {
+
+                //   float angle_circle = k * angle_increment + msg->angle_min;
+                //   float x_circle = msg->ranges[k] * cos(angle_circle) + 0.35; // car 
+                //   float y_circle = msg->ranges[k] * sin(angle_circle); // car
+                //   //rotate the point to the car frame
+                //   float x_car_circle = x_circle * cos(yaw) - y_circle * sin(yaw);
+                //   float y_car_circle = x_circle * sin(yaw) + y_circle * cos(yaw);
+
+                //   x_circle = x_car_circle + car_pose.position.x;
+                //   y_circle = y_car_circle + car_pose.position.y;
+
+                //     float circle_distance = sqrt(pow(x_circle - x, 2) + pow(y_circle - y, 2));
+                //     if (circle_distance < 0.05) {
+                //         // Point within the circle, take action if needed
+                //         // For example, publish a message or set a flag
+                //         counter++;
+
+                //         if (counter > 5)
+                //         {
+
+                //           std::cout << "tr_point: " << j << std::endl;
+                //           std::cout << "x: " << x << " y: " << y << std::endl;
+                //           std::cout << "x: " << x_circle << " y: " << y_circle << std::endl;
+                //           std::cout << "cntr: " << counter << std::endl;
+                //           obstacle_point_msg.header.stamp = msg->header.stamp;
+                //           obstacle_point_msg.header.frame_id = "map";
+                //           obstacle_point_msg.point.x = x;
+                //           obstacle_point_msg.point.y = y;
+                //           obstacle_point_msg.point.z = 0.0;
+
+                //             // std::cout << "Obstacle detected at x: " << x << " y: " << y << std::endl;
+                //           obstacle_publisher_->publish(obstacle_point_msg);
+                //           break;
+                //         }
+                //     }
+                // }
                 // obstacle detected
                 // publish stop signal
                 // stop the car
                 // obstacle_point_msg.header.frame_id = "obstacle_avoidance";
+                // std::cout << "tr_point: " << j << std::endl;
+                // std::cout << "x: " << x << " y: " << y << std::endl;
+                // // std::cout << "x: " << x_circle << " y: " << y_circle << std::endl;
+                // std::cout << "cntr: " << counter << std::endl;
                 obstacle_point_msg.header.stamp = msg->header.stamp;
                 obstacle_point_msg.header.frame_id = "map";
                 obstacle_point_msg.point.x = x;
                 obstacle_point_msg.point.y = y;
                 obstacle_point_msg.point.z = 0.0;
-
-                // std::cout << "Obstacle detected at x: " << x << " y: " << y << std::endl;
                 obstacle_publisher_->publish(obstacle_point_msg);
-
+              
               }
             }
           }
@@ -207,11 +260,30 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
         [this](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
             // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
             // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
-          car_pose = msg->pose;
+          // car_pose = msg->pose;
         });
 }
 
+void ObstacleAvoidanceNode::on_timer()
+{
+  // Lookup transform and update car pose
+  geometry_msgs::msg::TransformStamped transform_stamped;
+  try {
+    transform_stamped = tf_buffer_.lookupTransform(
+      "map", "base_link", tf2::TimePointZero);
 
+    car_pose.position.x = transform_stamped.transform.translation.x;
+    car_pose.position.y = transform_stamped.transform.translation.y;
+    // car_pose.position.z = transform_stamped.transform.translation.z;
+    // car_pose.orientation = transform_stamped.transform.rotation;
+
+    // RCLCPP_INFO(this->get_logger(), "Updated car pose from tf2: (%.2f, %.2f)",
+    //             car_pose.position.x, car_pose.position.y);
+    // std::cout << "Updated car pose from tf2: (" << car_pose.position.x << ", " << car_pose.position.y << ")" << std::endl;
+  } catch (tf2::TransformException & ex) {
+    RCLCPP_WARN(this->get_logger(), "Could not transform: %s", ex.what());
+  }
+}
 
 
 }  // namespace obstacle_avoidance

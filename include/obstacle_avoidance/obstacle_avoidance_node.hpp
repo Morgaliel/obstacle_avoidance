@@ -25,10 +25,14 @@
 #include "autoware_auto_planning_msgs/msg/trajectory.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Matrix3x3.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2/utils.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
+
 
 
 #include "obstacle_avoidance/obstacle_avoidance.hpp"
@@ -44,6 +48,7 @@ public:
   void subscribeToLaserScan();
   void subscribeToTrajectory();
   void subscribeToCarPose();
+  void on_timer();
 
 
   geometry_msgs::msg::Pose getPose(const autoware_auto_planning_msgs::msg::Trajectory & traj, const int idx);
@@ -65,6 +70,10 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr car_pose_subscriber_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr obstacle_publisher_;
 
+  // tf2 listener components
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
+  rclcpp::TimerBase::SharedPtr timer_;  // Timer for periodic tf2 updates
 };
 }  // namespace obstacle_avoidance
 
