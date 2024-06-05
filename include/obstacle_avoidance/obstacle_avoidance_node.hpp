@@ -64,6 +64,8 @@ private:
   std::array<geometry_msgs::msg::Pose, 270> poses_array;
   // std::array<float, 1080> distances_array; //1080 pktow +- 135 stopni
   geometry_msgs::msg::Pose car_pose;
+  std::vector<geometry_msgs::msg::Point> obstacle_points;
+  size_t self_idx;
   
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_subscriber_;
   rclcpp::Subscription<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr trajectory_subscriber_;

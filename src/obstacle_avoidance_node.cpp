@@ -70,16 +70,16 @@ bool ObstacleAvoidanceNode::calcClosestIndex(
   int closest_idx = -1;
 
   for (int i = 0; i < static_cast<int>(traj.points.size()); ++i) {
-    if (pose.position.x == -0.0097019 and pose.position.y == -0.580195)
-    {
-      continue;
-    }
+    // if (pose.position.x == -0.0097019 and pose.position.y == -0.580195)
+    // {
+    //   continue;
+    // }
     const double dist = calcDist2d(getPose(traj, i).position, pose.position);
 
     /* check distance threshold */
-    if (dist > dist_thr) {
-      continue;
-    }
+    // if (dist > dist_thr) {
+    //   continue;
+    // }
 
     /* check angle threshold */
     double yaw_i = tf2::getYaw(getPose(traj, i).orientation);
@@ -129,12 +129,17 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
           tf2::Matrix3x3 m(q);
           double roll, pitch, yaw;
           m.getRPY(roll, pitch, yaw);
-          size_t self_idx;
+          // size_t self_idx;
           const auto & current_pose = car_pose;  
           const auto & trajectory = trajectory_;
           // autoware_auto_planning_msgs::msg::Trajectory trajectory = trajectory_;
           
-          calcClosestIndex(trajectory, current_pose, self_idx);
+          //if car pose is not x=-0.0097019 and y=-0.580195, calculate the closest index
+          if (car_pose.position.x != -0.0097019 and car_pose.position.y != -0.580195)
+          {
+            calcClosestIndex(trajectory, current_pose, self_idx);
+          }
+          // calcClosestIndex(trajectory, current_pose, self_idx);
           // current_pose = trajectory.at(self_idx+30).pose;
 
           std::cout << "self_idx: " << self_idx << std::endl;
@@ -150,7 +155,7 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
             // std::vector<std::pair<float, float>> points;
 
             // laser scan points
-            for (int i = 360; i < msg->ranges.size()-360; i++)
+            for (int i = 420; i < msg->ranges.size()-420; i++)
             {
               int counter = 0;
               float angle = i * angle_increment + msg->angle_min;
@@ -170,62 +175,48 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
               float distance = sqrt(pow(x - temp_pose.position.x, 2) + pow(y - temp_pose.position.y, 2));
               if (distance < 0.05)
               {
-                
-
-                // for (int k = 0; k < msg->ranges.size(); k++) 
-                // {
-
-                //   float angle_circle = k * angle_increment + msg->angle_min;
-                //   float x_circle = msg->ranges[k] * cos(angle_circle) + 0.35; // car 
-                //   float y_circle = msg->ranges[k] * sin(angle_circle); // car
-                //   //rotate the point to the car frame
-                //   float x_car_circle = x_circle * cos(yaw) - y_circle * sin(yaw);
-                //   float y_car_circle = x_circle * sin(yaw) + y_circle * cos(yaw);
-
-                //   x_circle = x_car_circle + car_pose.position.x;
-                //   y_circle = y_car_circle + car_pose.position.y;
-
-                //     float circle_distance = sqrt(pow(x_circle - x, 2) + pow(y_circle - y, 2));
-                //     if (circle_distance < 0.05) {
-                //         // Point within the circle, take action if needed
-                //         // For example, publish a message or set a flag
-                //         counter++;
-
-                //         if (counter > 5)
-                //         {
-
-                //           std::cout << "tr_point: " << j << std::endl;
-                //           std::cout << "x: " << x << " y: " << y << std::endl;
-                //           std::cout << "x: " << x_circle << " y: " << y_circle << std::endl;
-                //           std::cout << "cntr: " << counter << std::endl;
-                //           obstacle_point_msg.header.stamp = msg->header.stamp;
-                //           obstacle_point_msg.header.frame_id = "map";
-                //           obstacle_point_msg.point.x = x;
-                //           obstacle_point_msg.point.y = y;
-                //           obstacle_point_msg.point.z = 0.0;
-
-                //             // std::cout << "Obstacle detected at x: " << x << " y: " << y << std::endl;
-                //           obstacle_publisher_->publish(obstacle_point_msg);
-                //           break;
-                //         }
-                //     }
-                // }
-                // obstacle detected
-                // publish stop signal
-                // stop the car
-                // obstacle_point_msg.header.frame_id = "obstacle_avoidance";
-                // std::cout << "tr_point: " << j << std::endl;
-                // std::cout << "x: " << x << " y: " << y << std::endl;
-                // // std::cout << "x: " << x_circle << " y: " << y_circle << std::endl;
-                // std::cout << "cntr: " << counter << std::endl;
-                obstacle_point_msg.header.stamp = msg->header.stamp;
-                obstacle_point_msg.header.frame_id = "map";
-                obstacle_point_msg.point.x = x;
-                obstacle_point_msg.point.y = y;
-                obstacle_point_msg.point.z = 0.0;
-                obstacle_publisher_->publish(obstacle_point_msg);
-              
+                geometry_msgs::msg::Point point;
+                point.x = x;
+                point.y = y;
+                //add obstacle point to the vector
+                obstacle_points.push_back(point);
               }
+
+                //check least 5 points from vector obstacle_points and calculate distance between the two furthest from each other
+              if (obstacle_points.size() > 5)
+              {
+                float max_distance = 0;
+                for (int i = obstacle_points.size()-5; i < obstacle_points.size(); i++)
+                {
+                  for (int j = i+1; j < obstacle_points.size(); j++)
+                  {
+                    float distance = sqrt(pow(obstacle_points[i].x - obstacle_points[j].x, 2) + pow(obstacle_points[i].y - obstacle_points[j].y, 2));
+                    if (distance > max_distance)
+                    {
+                      max_distance = distance;
+                    }
+                  }
+                }
+                //if the distance is smaller than 0.02m, publish the point
+                if (max_distance < 0.02)
+                {
+                  obstacle_point_msg.header.stamp = msg->header.stamp;
+                  obstacle_point_msg.header.frame_id = "map";
+                  obstacle_point_msg.point.x = obstacle_points[obstacle_points.size()-1].x;
+                  obstacle_point_msg.point.y = obstacle_points[obstacle_points.size()-1].y;
+                  obstacle_point_msg.point.z = 0.0;
+                  obstacle_publisher_->publish(obstacle_point_msg);
+                }
+              }
+
+                // obstacle_point_msg.header.stamp = msg->header.stamp;
+                // obstacle_point_msg.header.frame_id = "map";
+                // obstacle_point_msg.point.x = x;
+                // obstacle_point_msg.point.y = y;
+                // obstacle_point_msg.point.z = 0.0;
+                // obstacle_publisher_->publish(obstacle_point_msg);
+              
+              
             }
           }
           
