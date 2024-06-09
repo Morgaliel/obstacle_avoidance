@@ -2,16 +2,21 @@ cmake_minimum_required(VERSION 3.14)
 project(obstacle_avoidance)
 
 find_package(ament_cmake_auto REQUIRED)
+find_package(visualization_msgs REQUIRED)
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   include/obstacle_avoidance/obstacle_avoidance.hpp
   include/obstacle_avoidance/visibility_control.hpp
+  include/obstacle_avoidance/occupancy_grid.hpp
+  include/obstacle_avoidance/visualizer.hpp
   src/obstacle_avoidance.cpp
 )
 
 ament_auto_add_library(${PROJECT_NAME}_node SHARED
   include/obstacle_avoidance/obstacle_avoidance_node.hpp
+  include/obstacle_avoidance/occupancy_grid.hpp
+  include/obstacle_avoidance/visualizer.hpp
   src/obstacle_avoidance_node.cpp
 )
 
