@@ -18,12 +18,16 @@ using namespace std;
 
 namespace occupancy_grid{
     int xy_ind2ind(const nav_msgs::msg::OccupancyGrid& grid, int x_ind, int y_ind){
+        std::cout << "x_ind: " << x_ind << " y_ind: " << y_ind << std::endl;
+        std::cout << "grid.info.width: " << grid.info.width << " grid.info.height: " << grid.info.height << std::endl;
+        std::cout << "grid.data.size(): " << grid.data.size() << std::endl;
         return min(y_ind * int(grid.info.width) + x_ind, int(grid.data.size())-1);
     }
 
     int xy2ind(const nav_msgs::msg::OccupancyGrid& grid, float x, float y){
         int x_ind = static_cast<int>(ceil((x-grid.info.origin.position.x)/grid.info.resolution))-1;
         int y_ind = static_cast<int>(ceil((y-grid.info.origin.position.y)/grid.info.resolution))-1;
+        std::cout << "jesteśmy kurde blisko czuje to" << std::endl;
         return xy_ind2ind(grid, x_ind, y_ind);
     }
 
@@ -50,6 +54,11 @@ namespace occupancy_grid{
     }
 
     bool is_xy_occupied(nav_msgs::msg::OccupancyGrid& grid, float x, float y){
+        std::cout << "halo halo halo" << std::endl;
+        std::cout << "x: " << x << " y: " << y << std::endl;
+        if(int(grid.data.at(xy2ind(grid, x, y)))!=0 && int(grid.data.at(xy2ind(grid, x, y)))!=100){
+            return true;
+        }
         return int(grid.data.at(xy2ind(grid, x, y))) > THRESHOLD;
     }
 

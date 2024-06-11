@@ -38,6 +38,7 @@
 // #include <visualization_msgs/msg/marker.hpp>
 #include "occupancy_grid.hpp"
 #include "visualizer.hpp"
+#include <fstream>
 
 #include "obstacle_avoidance/obstacle_avoidance.hpp"
 
@@ -70,9 +71,11 @@ public:
   double calcDist2d(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b);
   double calculate_dist2(double x1, double x2, double y1, double y2);
   double normalizeEulerAngle(double euler);
-  bool calcClosestIndex(const autoware_auto_planning_msgs::msg::Trajectory & traj, const geometry_msgs::msg::Pose & pose,
+  bool calcClosestIndex(const std::vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose & pose,
   size_t & output_closest_idx, const double dist_thr = 10.0, const double angle_thr = M_PI_4);
-  std::vector<double> sample();
+  bool calcClosestIndex_waypoint(const std::vector<geometry_msgs::msg::Point> & waypoints_, const geometry_msgs::msg::Pose & pose,
+  size_t & output_closest_idx, const double dist_thr = 10.0, const double angle_thr = M_PI_4);
+  std::vector<double> sample_point();
   int nearest(std::vector<Node_struct> &tree, std::vector<double> &sampled_point);
   Node_struct steer(Node_struct &nearest_node, std::vector<double> &sampled_point);
   bool check_collision(Node_struct &nearest_node, Node_struct &new_node);
@@ -88,19 +91,27 @@ public:
                            int32_t type,
                            const std_msgs::msg::ColorRGBA &color,
                            double scale);
+  void load_waypoints(const std::string& filename);
+  void visualize_map();
+  void get_current_goal();
+  void reset_goal();
+  void advance_goal();
+  int find_closest_waypoint(const vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose& pose);
+  // void track_path(const nav_msgs::msg::Path& path);
 
 private:
   ObstacleAvoidancePtr obstacle_avoidance_{nullptr};
   int64_t param_name_{123};
   autoware_auto_planning_msgs::msg::Trajectory trajectory_;
   autoware_auto_planning_msgs::msg::Trajectory predicted_trajectory_;
-  std::array<geometry_msgs::msg::Pose, 270> poses_array;
+  std::array<geometry_msgs::msg::Pose, 271> poses_array;
   std::array<geometry_msgs::msg::Pose, 10> predicted_poses_array;
   // std::array<float, 1080> distances_array; //1080 pktow +- 135 stopni
   geometry_msgs::msg::Pose car_pose;
   std::vector<geometry_msgs::msg::Point> obstacle_points;
   size_t self_idx;
   size_t predicted_self_idx;
+  size_t curr_goal_ind_;
 
   Node_struct start_node;
   //make point vector
@@ -119,6 +130,8 @@ private:
   rclcpp::Subscription<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr trajectory_subscriber_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr car_pose_subscriber_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_subscriber_;
+
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_update_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr obstacle_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr goal_viz_publisher_;
@@ -126,6 +139,7 @@ private:
   // rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_updates_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_nodes_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_branches_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr obstacle_viz_pub_;
 
 
   // tf2 listener components
@@ -133,7 +147,8 @@ private:
   tf2_ros::TransformListener tf_listener_;
   rclcpp::TimerBase::SharedPtr timer_;  // Timer for periodic tf2 updates
 
-  nav_msgs::msg::OccupancyGrid occupancy_grid_;
+  nav_msgs::msg::OccupancyGrid map_;
+  nav_msgs::msg::OccupancyGrid map_updated_;
 };
 }  // namespace obstacle_avoidance
 
