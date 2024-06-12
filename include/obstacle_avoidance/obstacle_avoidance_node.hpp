@@ -35,7 +35,6 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/buffer.h"
 #include "random"
-// #include <visualization_msgs/msg/marker.hpp>
 #include "occupancy_grid.hpp"
 #include "visualizer.hpp"
 #include <fstream>
@@ -147,8 +146,6 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr obstacle_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr goal_viz_publisher_;
-  // rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr goal_viz_publisher_;
-  // rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_updates_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_nodes_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_branches_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr obstacle_viz_pub_;

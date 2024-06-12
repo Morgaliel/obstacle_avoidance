@@ -28,12 +28,21 @@ def launch_setup(context, *args, **kwargs):
             [FindPackageShare('obstacle_avoidance'), 'config', 'obstacle_avoidance.param.yaml']
         ).perform(context)
 
+    csv_path = LaunchConfiguration('csv_path').perform(context)
+    if not csv_path:
+        csv_path = PathJoinSubstitution(
+            [FindPackageShare('trajectory_loader'), 'data', 'trajectory.csv']
+        ).perform(context)
+
     obstacle_avoidance_node = Node(
         package='obstacle_avoidance',
         executable='obstacle_avoidance_node_exe',
         name='obstacle_avoidance_node',
         parameters=[
-            param_path
+            param_path,
+            {
+                'csv_path': csv_path
+            }
         ],
         output='screen',
         arguments=['--ros-args', '--log-level', 'info', '--enable-stdout-logs'],
@@ -53,6 +62,7 @@ def generate_launch_description():
         )
 
     add_launch_arg('obstacle_avoidance_param_file', '')
+    add_launch_arg('csv_path', '')
 
     return LaunchDescription([
         *declared_arguments,

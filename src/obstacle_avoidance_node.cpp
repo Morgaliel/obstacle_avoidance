@@ -32,13 +32,12 @@ const float MARGIN_2 = 0.18;
 const float DETECTED_OBS_MARGIN = 0.01;
 const float DETECTED_OBS_MARGIN_2 = 0.3;
 const float VELOCITY = 2;
-const string file_name =
-  "/home/max/autoware/src/universe/external/trajectory_loader/data/trajectory.csv";
 
 ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options)
 : Node("obstacle_avoidance", options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
 {
   obstacle_avoidance_ = std::make_unique<obstacle_avoidance::ObstacleAvoidance>();
+  const std::string csv_path = this->declare_parameter("csv_path", "");
   param_name_ = this->declare_parameter("param_name", 456);
   obstacle_avoidance_->foo(param_name_);
 
@@ -87,8 +86,7 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
 
   visualize_map();
   if (waypoints_.empty()) {
-    load_waypoints(
-      "/home/max/autoware/src/universe/external/trajectory_loader/data/trajectory.csv");
+    load_waypoints(csv_path);
   }
   reset_goal();
   last_time_ = this->now().seconds();
@@ -128,20 +126,14 @@ void ObstacleAvoidanceNode::load_waypoints(const std::string & filename)
 }
 
 void ObstacleAvoidanceNode::visualize_map() {
-    // Tworzenie markera
     visualization_msgs::msg::Marker dots;
-    
-    // Definiowanie kolorów (czerwony z pełną przezroczystością)
     std_msgs::msg::ColorRGBA color;
     color.r = 1.0;
     color.g = 0.0;
     color.b = 0.0;
     color.a = 1.0;
-
-    // Inicjalizacja markera przy użyciu funkcji initialize_marker
     this->initialize_marker(dots, "map", "obstacle", 0, visualization_msgs::msg::Marker::POINTS, color, 0.04);
 
-    // Dodawanie punktów przeszkód do markera
     for (size_t i = 0; i < map_.data.size(); i++) {
         if (map_.data[i] == 100) {
             geometry_msgs::msg::Point p;
@@ -151,8 +143,6 @@ void ObstacleAvoidanceNode::visualize_map() {
             dots.points.push_back(p);
         }
     }
-
-    // Publikowanie markera
     obstacle_viz_pub_->publish(dots);
 }
 
@@ -674,6 +664,15 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
                 //track_path(path);
                 visualize_tree(tree);
                 // std::cout << "path found" << std::endl;
+                // add 100 points from reference trajectory to path_found
+                Node_struct path_extension;
+                for (int i = 0; i < 40; i++) {
+                  path_extension.x = waypoints_.at((curr_goal_ind_ + i) % waypoints_.size()).position.x;
+                  path_extension.y = waypoints_.at((curr_goal_ind_ + i) % waypoints_.size()).position.y;
+                  path_found.push_back(path_extension);
+                }
+
+
                 avoidance_trajectory_ = createTrajectory(path_found);
                 break;
               }
@@ -761,13 +760,13 @@ autoware_auto_planning_msgs::msg::Trajectory ObstacleAvoidanceNode::createTrajec
 
   trajectory.header.frame_id = "map";
 
-  for (size_t i = 1; i < points.size()-1; i++) {
+  for (size_t i = 0; i < points.size()-1; i++) {
     geometry_msgs::msg::Point p1;
-    p1.x = points[i-1].x;
-    p1.y = points[i-1].y;
+    p1.x = points[i].x;
+    p1.y = points[i].y;
     geometry_msgs::msg::Point p2;
-    p2.x = points[i].x;
-    p2.y = points[i].y;
+    p2.x = points[i+1].x;
+    p2.y = points[i+1].y;
 
     autoware_auto_planning_msgs::msg::TrajectoryPoint trajectory_point;
     geometry_msgs::msg::Pose pose;
@@ -810,7 +809,7 @@ void ObstacleAvoidanceNode::subscribeToTrajectory()
           {
             std::cout << "obstacle detected along path" << std::endl;
             obstacle_detected = true;
-            target_idx = curr_goal_ind_ + 7;
+            target_idx = (curr_goal_ind_ + 7) % waypoints_.size();
             break;
           }
         }
@@ -818,7 +817,6 @@ void ObstacleAvoidanceNode::subscribeToTrajectory()
       }
       else //obstacle is detected
       {
-        
         obstacle_avoidance_trajectory_pub_->publish(avoidance_trajectory_);
         if(self_idx == target_idx)
         {
