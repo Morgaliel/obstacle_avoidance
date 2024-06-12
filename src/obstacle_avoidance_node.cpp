@@ -17,13 +17,13 @@
 namespace obstacle_avoidance
 {
 
-const int MAX_ITER = 1200; //150
-const int MIN_ITER = 1000; //100
+const int MAX_ITER = 600; //150
+const int MIN_ITER = 500; //100
 const double STD = 1.5;  // standard deviation for normal distribution
 const double STEER_RANGE = 0.3; //0.3
 const float NEAR_RANGE = 1.0;
 const double GOAL_THRESHOLD = 0.15;
-const float GOAL_AHEAD_DIST = 3.5;
+const float GOAL_AHEAD_DIST = 3;
 const double X_SAMPLE_RANGE = 3;
 const double Y_SAMPLE_RANGE = 3;
 const float SCAN_RANGE = 3.5;
@@ -31,7 +31,7 @@ const float MARGIN = 0.01;
 const float MARGIN_2 = 0.18;
 const float DETECTED_OBS_MARGIN = 0.01;
 const float DETECTED_OBS_MARGIN_2 = 0.3;
-const float VELOCITY = 1.5;
+const float VELOCITY = 2;
 const string file_name =
   "/home/max/autoware/src/universe/external/trajectory_loader/data/trajectory.csv";
 
@@ -84,7 +84,6 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   subscribeToCarPose();
   subscribeToLaserScan();
   subscribeToTrajectory();
-  // subscribeToPredictedTrajectory();
 
   visualize_map();
   if (waypoints_.empty()) {
@@ -116,11 +115,15 @@ void ObstacleAvoidanceNode::load_waypoints(const std::string & filename)
     double x = std::stod(token);
     std::getline(ss, token, ';');
     double y = std::stod(token);
+    std::getline(ss, token, ';');
+    double yaw = std::stod(token);
 
-    geometry_msgs::msg::Point point;
-    point.x = x;
-    point.y = y;
-    waypoints_.push_back(point);
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = x;
+    pose.position.y = y;
+    pose.orientation.z = yaw;
+    pose.orientation.w = 1.0;
+    waypoints_.push_back(pose);
   }
 }
 
@@ -179,15 +182,14 @@ inline double ObstacleAvoidanceNode::calculate_dist2(double x1, double x2, doubl
 void ObstacleAvoidanceNode::get_current_goal()
 {
   float dist_to_goal2 = calculate_dist2(
-    waypoints_.at(curr_goal_ind_).x, car_pose.position.x, waypoints_.at(curr_goal_ind_).y,
+    waypoints_.at(curr_goal_ind_).position.x, car_pose.position.x, waypoints_.at(curr_goal_ind_).position.y,
     car_pose.position.y);
-  // std::cout << "dist_to_goal2: " << dist_to_goal2 << std::endl;
   // goal out of range, reset goal
   if (dist_to_goal2 > pow(GOAL_AHEAD_DIST, 2)) {
     reset_goal();
   }
   if (occupancy_grid::is_xy_occupied(
-        map_updated_, waypoints_.at(curr_goal_ind_).x, waypoints_.at(curr_goal_ind_).y)) {
+        map_updated_, waypoints_.at(curr_goal_ind_).position.x, waypoints_.at(curr_goal_ind_).position.y)) {
     advance_goal();
   }
   // enough progress made, advance goal
@@ -198,9 +200,6 @@ void ObstacleAvoidanceNode::get_current_goal()
 
 void ObstacleAvoidanceNode::reset_goal()
 {
-  // boost::shared_ptr<nav_msgs::msg::Odometry const> pose_ptr;
-  // pose_ptr = ros::topic::waitForMessage<nav_msgs::Odometry>(pose_topic, ros::Duration(5.0));
-
   if (
     (car_pose.position.x == -0.0097019 && car_pose.position.y == -0.580195) ||
     (car_pose.position.x == 0 && car_pose.position.y == 0)) {
@@ -208,7 +207,7 @@ void ObstacleAvoidanceNode::reset_goal()
   } else {
     int closest_ind = find_closest_waypoint(waypoints_, car_pose);
     float closest_dist2 = calculate_dist2(
-      waypoints_.at(closest_ind).x, car_pose.position.x, waypoints_.at(closest_ind).y,
+      waypoints_.at(closest_ind).position.x, car_pose.position.x, waypoints_.at(closest_ind).position.y,
       car_pose.position.y);
     if (closest_dist2 > pow(GOAL_AHEAD_DIST, 2)) {
       throw std::runtime_error(
@@ -216,7 +215,6 @@ void ObstacleAvoidanceNode::reset_goal()
     }
     // advance from closest waypoint until one that is around 0.9 GOAL_AHEAD_DIST away
     curr_goal_ind_ = closest_ind;
-    // std::cout << "curr_goal_ind_: " << curr_goal_ind_ << std::endl;
     advance_goal();
   }
 }
@@ -233,40 +231,38 @@ void ObstacleAvoidanceNode::advance_goal()
   float pose_x = car_pose.position.x;
   float pose_y = car_pose.position.y;
   float curr_dist2 =
-    calculate_dist2(waypoints_.at(curr_ind).x, pose_x, waypoints_.at(curr_ind).y, pose_y);
+    calculate_dist2(waypoints_.at(curr_ind).position.x, pose_x, waypoints_.at(curr_ind).position.y, pose_y);
 
   while (curr_dist2 < pow(GOAL_AHEAD_DIST * 0.9, 2) ||
-         is_xy_occupied(map_updated_, waypoints_.at(curr_ind).x, waypoints_.at(curr_ind).y)) {
+         is_xy_occupied(map_updated_, waypoints_.at(curr_ind).position.x, waypoints_.at(curr_ind).position.y)) {
     curr_dist2 =
-      calculate_dist2(waypoints_.at(curr_ind).x, pose_x, waypoints_.at(curr_ind).y, pose_y);
+      calculate_dist2(waypoints_.at(curr_ind).position.x, pose_x, waypoints_.at(curr_ind).position.y, pose_y);
     curr_ind++;
     if (curr_ind >= waypoints_.size()) {
       curr_ind = 0;
     }
     if (
       curr_dist2 > pow(GOAL_AHEAD_DIST, 2) &&
-      is_xy_occupied(map_updated_, waypoints_.at(curr_ind).x, waypoints_.at(curr_ind).y)) {
+      is_xy_occupied(map_updated_, waypoints_.at(curr_ind).position.x, waypoints_.at(curr_ind).position.y)) {
       break;
     }
   }
   curr_goal_ind_ = max(0, curr_ind - 1);
-  // std::cout << "curr_goal_ind_: " << curr_goal_ind_ << std::endl;
 }
 
 int ObstacleAvoidanceNode::find_closest_waypoint(
-  const std::vector<geometry_msgs::msg::Point> & waypoints, const geometry_msgs::msg::Pose & pose)
+  const std::vector<geometry_msgs::msg::Pose> & waypoints, const geometry_msgs::msg::Pose & pose)
 {
   float min_dist2 = 100000.0;
   int min_ind = -1;
   for (int i = 0; i < waypoints.size(); i++) {
     float dist2 =
-      calculate_dist2(waypoints.at(i).x, pose.position.x, waypoints.at(i).y, pose.position.y);
+      calculate_dist2(waypoints.at(i).position.x, pose.position.x, waypoints.at(i).position.y, pose.position.y);
     if (dist2 < min_dist2) {
       min_dist2 = dist2;
       min_ind = i;
     }
   }
-  // std::cout << "min_ind: " << min_ind << std::endl;
   return min_ind;
 }
 
@@ -276,24 +272,19 @@ std::vector<double> ObstacleAvoidanceNode::sample_point()
 
   std::vector<double> sampled_point;
 
-  // std::cout << "widać że się wywołuje" << std::endl;
   std::normal_distribution<double> norm_dist_x(
-    0.6 * waypoints_.at(curr_goal_ind_).x + 0.4 * car_pose.position.x, STD);
+    0.6 * waypoints_.at(curr_goal_ind_).position.x + 0.4 * car_pose.position.x, STD);
   std::normal_distribution<double> norm_dist_y(
-    0.6 * waypoints_.at(curr_goal_ind_).y + 0.4 * car_pose.position.y, STD);
+    0.6 * waypoints_.at(curr_goal_ind_).position.y + 0.4 * car_pose.position.y, STD);
   double x = norm_dist_x(gen_);
   double y = norm_dist_y(gen_);
-
-  // std::cout << "nadal widać" << std::endl;
 
   // sample recursively until one in the free space gets returned
   if (!occupancy_grid::is_xy_occupied(map_updated_, x, y)) {
     sampled_point.push_back(x);
     sampled_point.push_back(y);
-    // std::cout << "nadal widać jak znalazło" << std::endl;
     return sampled_point;
   } else {
-    // std::cout << "nadal widać jak nie znalazło" << std::endl;
     return sample_point();
   }
 }
@@ -313,7 +304,6 @@ int ObstacleAvoidanceNode::nearest(
   for (int i = 0; i < int(tree.size()); i++) {
     double dist = calculate_dist2(tree.at(i).x, sampled_point[0], tree.at(i).y, sampled_point[1]);
     if (dist < min_dist) {
-      // std::cout << "i: " << i << std::endl;
       nearest_node = i;
       min_dist = dist;
     }
@@ -374,7 +364,6 @@ bool ObstacleAvoidanceNode::check_collision(Node_struct & nearest_node, Node_str
 
     if (occupancy_grid::is_xy_occupied(map_updated_2_, x, y)) {
       collision = true;
-      // std::cout << "collision detected at (" << x << ", " << y << ")" << std::endl;
       break;
     }
   }
@@ -469,8 +458,8 @@ std::vector<int> ObstacleAvoidanceNode::near(std::vector<Node_struct> & tree, No
 void ObstacleAvoidanceNode::visualize_tree(std::vector<Node_struct> & tree)
 {
   goal_marker.pose.orientation.w = 1.0;
-  goal_marker.pose.position.x = waypoints_.at(curr_goal_ind_).x;
-  goal_marker.pose.position.y = waypoints_.at(curr_goal_ind_).y;
+  goal_marker.pose.position.x = waypoints_.at(curr_goal_ind_).position.x;
+  goal_marker.pose.position.y = waypoints_.at(curr_goal_ind_).position.y;
   goal_marker.pose.position.z = 0.0;
   goal_viz_publisher_->publish(goal_marker);
 
@@ -496,38 +485,6 @@ void ObstacleAvoidanceNode::visualize_tree(std::vector<Node_struct> & tree)
   tree_branches_pub_->publish(tree_branch);
   tree_nodes_pub_->publish(tree_nodes);
 }
-
-// void ObstacleAvoidanceNode::track_path(const nav_msgs::msg::Path& path){
-//     //use pure pursuit to track the path planned by RRT
-//     int i =0;
-//     while (i<path.poses.size()-1){
-//         float x = path.poses.at(i).pose.position.x;
-//         float y = path.poses.at(i).pose.position.y;
-//         float x_car = car_pose.position.x;
-//         float y_car = car_pose.position.y;
-//         if (calculate_dist2(x, x_car, y, y_car) > pow(LOOK_AHEAD_DIST, 2)){
-//             break;
-//         }
-//         i++;
-//     }
-//     //calculate setpoint for pure pursuit to track
-//     tf::Vector3 p1(path.poses.at(i).pose.position.x, path.poses.at(i).pose.position.y, 0.0);
-//     tf::Vector3 p2(path.poses.at(max(0,i-1)).pose.position.x,
-//     path.poses.at(max(0,i-1)).pose.position.y, 0.0); pos_sp_ = tf_.inverse() * ((p1 + p2) / 2.0);
-//     float curvature = 2*abs(pos_sp_.getY())/(LOOK_AHEAD_DIST * LOOK_AHEAD_DIST);
-
-//     // publish drive cmds
-//     float steering_cmd =  P_GAIN * curvature;
-//     if (pos_sp_.getY()<0){steering_cmd *= -1.0;}
-//     publish_cmd(steering_cmd);
-
-//     // visualize setpoint for tracking
-//     geometry_msgs::Pose pose;
-//     pose.orientation.w = 1.0;
-//     pose.position.x = pos_sp_.x(); pose.position.y = pos_sp_.y();
-//     pos_sp_viz->set_pose(pose);
-//     pos_sp_viz->publish_marker();
-// }
 
 void ObstacleAvoidanceNode::initialize_marker(
   visualization_msgs::msg::Marker & marker, const std::string & frame_id, const std::string & ns,
@@ -571,13 +528,13 @@ double ObstacleAvoidanceNode::normalizeEulerAngle(double euler)
 }
 
 bool ObstacleAvoidanceNode::calcClosestIndex(
-  const std::vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose &
+  const std::vector<geometry_msgs::msg::Pose>& waypoints, const geometry_msgs::msg::Pose &
   pose, size_t & output_closest_idx, const double dist_thr, const double angle_thr)
 {
   double dist_min = std::numeric_limits<double>::max();
   int closest_idx = -1;
   for (int i = 0; i < waypoints.size(); i++) {
-    const double dist = calcDist2d(waypoints[i], pose.position);
+    const double dist = calcDist2d(waypoints[i].position, pose.position);
 
     if (dist < dist_min) {
       dist_min = dist;
@@ -610,8 +567,6 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
       // Get Goal
       get_current_goal();
 
-      // if(is_current_goal_changed())
-      // {
         std::vector<Node_struct> tree;
         std::vector<Node_struct> nodes_near_goal;
 
@@ -667,7 +622,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
                 }
                 rewire_count++;
               }
-              if (is_goal(tree.back(), waypoints_.at(curr_goal_ind_).x, waypoints_.at(curr_goal_ind_).y))
+              if (is_goal(tree.back(), waypoints_.at(curr_goal_ind_).position.x, waypoints_.at(curr_goal_ind_).position.y))
               {
                 nodes_near_goal.push_back(tree.back());
               }
@@ -733,7 +688,6 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
             // std::cout << "Couldn't find a path" << std::endl;
           }
         }
-      // }
     });
 }
 
@@ -768,7 +722,6 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
       double roll, pitch, yaw;
       m.getRPY(roll, pitch, yaw);
 
-      // for (int i = 360; i < msg->ranges.size() - 360; i++) //90 stopni na środku lidara
       for (int i = 0; i < msg->ranges.size(); i++)
       {
           float range = msg->ranges.at(i);
@@ -789,71 +742,17 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
       // free the cells in which the car occupies (dynamic layer)
       occupancy_grid::inflate_cell(map_updated_, occupancy_grid::xy2ind(map_updated_, car_pose.position.x, car_pose.position.y), 0.25, 0);
       map_update_pub_->publish(map_updated_);
-
-
-
-      auto obstacle_point_msg = geometry_msgs::msg::PointStamped();
-
-      if (car_pose.position.x != -0.0097019 and car_pose.position.y != -0.580195) {
-        calcClosestIndex(waypoints_, car_pose, self_idx);
-      }
-
-      // trajectory points
-      for (int j = self_idx; j < (self_idx + 30) % 270; j++) {
-        auto temp_point = waypoints_.at(j);
-        // laser scan points
-        for (int i = 420; i < msg->ranges.size() - 420; i++) {
-          int counter = 0;
-          float angle = i * angle_increment + msg->angle_min;
-          // std::cout << "i: " << i << " angle: " << angle << std::endl;
-
-          float x = msg->ranges[i] * cos(angle) + 0.35;  // car
-          float y = msg->ranges[i] * sin(angle);         // car
-          // rotate the point to the car frame
-          float x_car = x * cos(yaw) - y * sin(yaw);
-          float y_car = x * sin(yaw) + y * cos(yaw);
-
-          x = x_car + car_pose.position.x;
-          y = y_car + car_pose.position.y;
-
-          // points.push_back(std::make_pair(x, y));
-
-          float distance = sqrt(pow(x - temp_point.x, 2) + pow(y - temp_point.y, 2));
-          if (distance < 0.05) {
-            geometry_msgs::msg::Point point;
-            point.x = x;
-            point.y = y;
-            // add obstacle point to the vector
-            obstacle_points.push_back(point);
-          }
-
-          // check least 5 points from vector obstacle_points and calculate distance between the two
-          // furthest from each other
-          if (obstacle_points.size() > 5) {
-            float max_distance = 0;
-            for (int i = obstacle_points.size() - 5; i < obstacle_points.size(); i++) {
-              for (int j = i + 1; j < obstacle_points.size(); j++) {
-                float distance = sqrt(
-                  pow(obstacle_points[i].x - obstacle_points[j].x, 2) +
-                  pow(obstacle_points[i].y - obstacle_points[j].y, 2));
-                if (distance > max_distance) {
-                  max_distance = distance;
-                }
-              }
-            }
-            // if the distance is smaller than 0.02m, publish the point
-            if (max_distance < 0.02) {
-              obstacle_point_msg.header.stamp = msg->header.stamp;
-              obstacle_point_msg.header.frame_id = "map";
-              obstacle_point_msg.point.x = obstacle_points[obstacle_points.size()-1].x;
-              obstacle_point_msg.point.y = obstacle_points[obstacle_points.size()-1].y;
-              obstacle_point_msg.point.z = 0.0;
-              obstacle_publisher_->publish(obstacle_point_msg);
-            }
-          }
-        }
-      }
     });
+}
+
+double ObstacleAvoidanceNode::calculateYaw(const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point& p2) {
+    // Calculate the vectors between the points
+
+    double dx = p2.x - p1.x;
+    double dy = p2.y - p1.y;
+
+    double angleRadians = atan2(dy, dx);
+    return angleRadians;
 }
 
 autoware_auto_planning_msgs::msg::Trajectory ObstacleAvoidanceNode::createTrajectory(const std::vector<Node_struct> & points)
@@ -862,14 +761,22 @@ autoware_auto_planning_msgs::msg::Trajectory ObstacleAvoidanceNode::createTrajec
 
   trajectory.header.frame_id = "map";
 
-  for (auto & point : points) {
+  for (size_t i = 1; i < points.size()-1; i++) {
+    geometry_msgs::msg::Point p1;
+    p1.x = points[i-1].x;
+    p1.y = points[i-1].y;
+    geometry_msgs::msg::Point p2;
+    p2.x = points[i].x;
+    p2.y = points[i].y;
+
     autoware_auto_planning_msgs::msg::TrajectoryPoint trajectory_point;
     geometry_msgs::msg::Pose pose;
-    // auto q = tier4_autoware_utils::createQuaternionFromYaw(point[2]);
-    pose.position.x = point.x;
-    pose.position.y = point.y;
+    pose.position.x = p2.x;
+    pose.position.y = p2.y;
     pose.position.z = 0.0;
-    // pose.orientation = q;
+
+    pose.orientation.z = calculateYaw(p1, p2);
+    pose.orientation.w = 1.0;
 
     trajectory_point.pose = pose;
 
@@ -891,12 +798,6 @@ void ObstacleAvoidanceNode::subscribeToTrajectory()
       // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
       // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
       trajectory_ = *msg;
-
-      //obstacle detection
-      //if obstacle
-      //avoidance_trajectory
-      //else
-      //trajectory
       if (car_pose.position.x != -0.0097019 and car_pose.position.y != -0.580195) {
         calcClosestIndex(waypoints_, car_pose, self_idx);
       }
@@ -905,11 +806,11 @@ void ObstacleAvoidanceNode::subscribeToTrajectory()
       {
         for(int i = self_idx; i < (self_idx + 30) % 270; i++)
         {
-          if(check_collision_2(waypoints_.at(i), waypoints_.at(i+1)))
+          if(check_collision_2(waypoints_.at(i).position, waypoints_.at(i+1).position))
           {
             std::cout << "obstacle detected along path" << std::endl;
             obstacle_detected = true;
-            target_idx = curr_goal_ind_ + 5;
+            target_idx = curr_goal_ind_ + 7;
             break;
           }
         }
@@ -930,34 +831,6 @@ void ObstacleAvoidanceNode::subscribeToTrajectory()
     });
 }
 
-// // make subscriber to /control/trajectory_follower/lateral/predicted_trajectory
-// void ObstacleAvoidanceNode::subscribeToPredictedTrajectory()
-// {
-//   // Utwórz subskrybenta dla tematu /control/trajectory_follower/lateral/predicted_trajectory
-//   predicted_trajectory_subscriber_ =
-//     this->create_subscription<autoware_auto_planning_msgs::msg::Trajectory>(
-//       "/control/trajectory_follower/lateral/predicted_trajectory",
-//       10,  // Rozmiar kolejki subskrybenta
-//       [this](const autoware_auto_planning_msgs::msg::Trajectory::SharedPtr msg) {
-//         // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
-//         // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
-//         predicted_trajectory_ = *msg;
-
-//         // auto obstacle_point_msg = geometry_msgs::msg::PointStamped();
-
-//         for (int i = 0; i < msg->points.size(); i++) {
-//           // tutaj jest 10 punktów, globalne współrzędne aktualnej przewidywanej trajektorii
-//           predicted_poses_array[i] = msg->points[i].pose;
-//         }
-//         calcClosestIndex(waypoints_, predicted_poses_array[9], predicted_self_idx);
-//         // obstacle_point_msg.header.stamp = msg->header.stamp;
-//         // obstacle_point_msg.header.frame_id = "map";
-//         // obstacle_point_msg.point.x = predicted_poses_array[9].position.x;
-//         // obstacle_point_msg.point.y = predicted_poses_array[9].position.y;
-//         // obstacle_point_msg.point.z = 0.0;
-//         // obstacle_publisher_->publish(obstacle_point_msg);
-//       });
-// }
 
 }  // namespace obstacle_avoidance
 

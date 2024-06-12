@@ -71,7 +71,7 @@ public:
   double calcDist2d(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b);
   double calculate_dist2(double x1, double x2, double y1, double y2);
   double normalizeEulerAngle(double euler);
-  bool calcClosestIndex(const std::vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose & pose,
+  bool calcClosestIndex(const std::vector<geometry_msgs::msg::Pose>& waypoints, const geometry_msgs::msg::Pose & pose,
   size_t & output_closest_idx, const double dist_thr = 10.0, const double angle_thr = M_PI_4);
   bool calcClosestIndex_waypoint(const std::vector<geometry_msgs::msg::Point> & waypoints_, const geometry_msgs::msg::Pose & pose,
   size_t & output_closest_idx, const double dist_thr = 10.0, const double angle_thr = M_PI_4);
@@ -97,8 +97,9 @@ public:
   void get_current_goal();
   void reset_goal();
   void advance_goal();
-  int find_closest_waypoint(const vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose& pose);
+  int find_closest_waypoint(const vector<geometry_msgs::msg::Pose>& waypoints, const geometry_msgs::msg::Pose& pose);
   autoware_auto_planning_msgs::msg::Trajectory createTrajectory(const std::vector<Node_struct> & points);
+  double calculateYaw(const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point& p2);
   // void track_path(const nav_msgs::msg::Path& path);
 
 private:
@@ -119,7 +120,7 @@ private:
 
   Node_struct start_node;
   //make point vector
-  std::vector<geometry_msgs::msg::Point> waypoints_;
+  std::vector<geometry_msgs::msg::Pose> waypoints_;
   bool is_waypoints_set = false;
   std::mt19937 gen_;
 
