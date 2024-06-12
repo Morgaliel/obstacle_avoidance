@@ -17,8 +17,8 @@
 namespace obstacle_avoidance
 {
 
-const int MAX_ITER = 600;  // 150
-const int MIN_ITER = 500;  // 100
+const int MAX_ITER = 350;
+const int MIN_ITER = 300;
 const int COLLISION_HORIZON = 30;
 const double STD = 1.5;
 const double STEER_RANGE = 0.3;
