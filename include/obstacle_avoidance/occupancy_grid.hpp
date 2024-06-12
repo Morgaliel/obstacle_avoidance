@@ -18,18 +18,18 @@ using namespace std;
 
 namespace occupancy_grid{
     int xy_ind2ind(const nav_msgs::msg::OccupancyGrid& grid, int x_ind, int y_ind){
-        // std::cout << "x_ind: " << x_ind << " y_ind: " << y_ind << std::endl;
-        // std::cout << "grid.info.width: " << grid.info.width << " grid.info.height: " << grid.info.height << std::endl;
-        // std::cout << "grid.data.size(): " << grid.data.size() << std::endl;
-        // int temp = min(y_ind * int(grid.info.width) + x_ind, int(grid.data.size())-1);
-        return min(y_ind * int(grid.info.width) + x_ind, int(grid.data.size())-1); //dziwne ale tutaj niby wybiera ostatni element a jednak jest błąd
+        return min(y_ind * int(grid.info.width) + x_ind, int(grid.data.size())-1);
     }
 
     int xy2ind(const nav_msgs::msg::OccupancyGrid& grid, float x, float y){
-        int x_ind = max(static_cast<int>(ceil((x-grid.info.origin.position.x,0)/grid.info.resolution))-1,0);
-        int y_ind = max(static_cast<int>(ceil((y-grid.info.origin.position.y,0)/grid.info.resolution))-1,0);
-        // std::cout << "jesteśmy kurde blisko czuje to" << std::endl;
-        // std::cout << "x_ind: " << x_ind << " y_ind: " << y_ind << std::endl;
+        int x_ind = static_cast<int>(ceil((x-grid.info.origin.position.x)/grid.info.resolution))-1;
+        int y_ind = static_cast<int>(ceil((y-grid.info.origin.position.y)/grid.info.resolution))-1;
+
+        if (x_ind <= 0 || x_ind >= grid.info.width || y_ind <= 0 || y_ind >= grid.info.height) 
+        {
+            return 100;  // Return an invalid index if out of range
+        }
+
         return xy_ind2ind(grid, x_ind, y_ind);
     }
 
@@ -56,15 +56,8 @@ namespace occupancy_grid{
     }
 
     bool is_xy_occupied(nav_msgs::msg::OccupancyGrid& grid, float x, float y){
-        // std::cout << "halo halo halo" << std::endl;
-        // std::cout << "x: " << x << " y: " << y << std::endl;
-        // if(int(grid.data.at(xy2ind(grid, x, y)))!=0 && int(grid.data.at(xy2ind(grid, x, y)))!=100){
-        //     return true;
-        // }
         int temp = int(grid.data.at(xy2ind(grid, x, y)));
-        // std::cout << "temp: " << temp << std::endl;
-
-        if(temp!=0){
+        if(temp < 0 || temp > THRESHOLD){
             return true;
         }
         else

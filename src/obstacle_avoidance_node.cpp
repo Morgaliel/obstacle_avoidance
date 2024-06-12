@@ -17,17 +17,17 @@
 namespace obstacle_avoidance
 {
 
-const int MAX_ITER = 120;
-const int MIN_ITER = 100;
+const int MAX_ITER = 600; //150
+const int MIN_ITER = 500; //100
 const double STD = 1.5;  // standard deviation for normal distribution
-const double STEER_RANGE = 0.2; //0.3
+const double STEER_RANGE = 0.3; //0.3
 const float NEAR_RANGE = 1.0;
 const double GOAL_THRESHOLD = 0.15;
-const float GOAL_AHEAD_DIST = 3.5;
+const float GOAL_AHEAD_DIST = 2.5;
 const double X_SAMPLE_RANGE = 3;
 const double Y_SAMPLE_RANGE = 3;
 const float SCAN_RANGE = 3.5;
-const float MARGIN = 0.18;
+const float MARGIN = 0.1;
 const float DETECTED_OBS_MARGIN = 0.2;
 const string file_name =
   "/home/max/autoware/src/universe/external/trajectory_loader/data/trajectory.csv";
@@ -38,8 +38,6 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   obstacle_avoidance_ = std::make_unique<obstacle_avoidance::ObstacleAvoidance>();
   param_name_ = this->declare_parameter("param_name", 456);
   obstacle_avoidance_->foo(param_name_);
-
-  
 
   map_subscriber_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
   "/map", 10, [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -65,8 +63,6 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   green.a = 1.0;
   blue.b = 1.0;
   blue.a = 1.0;
-
-  last_curr_goal_ind_ = -1;
 
   // Set up markers
   initialize_marker(
@@ -343,26 +339,64 @@ Node_struct ObstacleAvoidanceNode::steer(
   return new_node;
 }
 
+// bool ObstacleAvoidanceNode::check_collision(Node_struct & nearest_node, Node_struct & new_node)
+// {
+//   // This method returns a boolean indicating if the path between the
+//   // nearest node and the new node created from steering is collision free
+
+//   bool collision = false;
+//   int x_cell_diff = abs(ceil((nearest_node.x - new_node.x) / map_updated_.info.resolution));
+//   int y_cell_diff = abs(ceil((nearest_node.y - new_node.y) / map_updated_.info.resolution));
+
+//   double dt = 1.0 / max(x_cell_diff, y_cell_diff);
+//   double t = 0.0;
+//   for (int i = 0; i <= max(x_cell_diff, y_cell_diff); i++) {
+//     double x = nearest_node.x + t * (new_node.x - nearest_node.x);
+//     double y = nearest_node.y + t * (new_node.y - nearest_node.y);
+//     if (occupancy_grid::is_xy_occupied(map_updated_, x, y)) {
+//       collision = true;
+//       std::cout << "collision detected" << std::endl;
+//       break;
+//     }
+//     t += dt;
+//   }
+//   // std::cout << "collision: " << collision << std::endl;
+//   return collision;
+// }
+
 bool ObstacleAvoidanceNode::check_collision(Node_struct & nearest_node, Node_struct & new_node)
 {
   // This method returns a boolean indicating if the path between the
   // nearest node and the new node created from steering is collision free
 
   bool collision = false;
-  int x_cell_diff = abs(ceil((nearest_node.x - new_node.x) / map_updated_.info.resolution));
-  int y_cell_diff = abs(ceil((nearest_node.y - new_node.y) / map_updated_.info.resolution));
 
-  double dt = 1.0 / max(x_cell_diff, y_cell_diff);
-  double t = 0.0;
-  for (int i = 0; i <= max(x_cell_diff, y_cell_diff); i++) {
-    double x = nearest_node.x + t * (new_node.x - nearest_node.x);
-    double y = nearest_node.y + t * (new_node.y - nearest_node.y);
+  // Calculate differences
+  double x_diff = new_node.x - nearest_node.x;
+  double y_diff = new_node.y - nearest_node.y;
+
+  // Calculate the number of steps needed based on the maximum difference
+  double resolution = map_updated_.info.resolution;
+  int x_steps = std::ceil(std::abs(x_diff) / resolution);
+  int y_steps = std::ceil(std::abs(y_diff) / resolution);
+  int num_steps = std::max(x_steps, y_steps);
+
+  // Calculate step increments
+  double x_increment = x_diff / num_steps;
+  double y_increment = y_diff / num_steps;
+
+  // Iterate over the line and check for collisions
+  for (int i = 0; i <= num_steps; ++i) {
+    double x = nearest_node.x + i * x_increment;
+    double y = nearest_node.y + i * y_increment;
+
     if (occupancy_grid::is_xy_occupied(map_updated_, x, y)) {
       collision = true;
+      // std::cout << "collision detected at (" << x << ", " << y << ")" << std::endl;
       break;
     }
-    t += dt;
   }
+
   return collision;
 }
 
@@ -537,21 +571,6 @@ bool ObstacleAvoidanceNode::calcClosestIndex(
   return closest_idx != -1;
 }
 
-bool ObstacleAvoidanceNode::is_current_goal_changed()
-{
-  // check if the current goal index has changed
-  std::cout << "last_curr_goal_ind_: " << last_curr_goal_ind_ << std::endl;
-  std::cout << "curr_goal_ind_: " << curr_goal_ind_ << std::endl;
-  if(last_curr_goal_ind_ == curr_goal_ind_)
-  {
-    return false;
-  }
-  else
-  {
-    return true;
-  }
-}
-
 void ObstacleAvoidanceNode::subscribeToCarPose()
 {
   rclcpp::QoS qos(rclcpp::KeepLast(10));  // Depth: KEEP_LAST (5)
@@ -580,11 +599,9 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
 
         tree.clear();
         tree.push_back(start_node);
-        if (waypoints_.size() > 0 && car_pose.position.x > 1 && car_pose.position.y != 0) {
+        if (waypoints_.size() > 0 && car_pose.position.x != 0 && car_pose.position.y != 0) {
           for (int iter = 0; iter < MAX_ITER; iter++) {
-            // std::cout << "początek pętli" << std::endl; //to widać
             std::vector<double> sampled_point = sample_point();
-            // std::cout << "essa, środek pętli?" << std::endl; //tego już nie widać
             int nearest_ind = nearest(tree, sampled_point);
             Node_struct new_node = steer(tree.at(nearest_ind), sampled_point);
             if (!check_collision(tree.at(nearest_ind), new_node)) {
@@ -593,9 +610,6 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
               /** connect new_node to the node in the neighborhood with the minimum cost **/
               int min_cost_node_ind = nearest_ind;
               float min_cost = tree.at(nearest_ind).cost + line_cost(tree.at(nearest_ind), new_node); 
-              // std::cout << "nodes_near.size(): " << nodes_near.size() << std::endl;
-              // std::cout << "tree.size(): " << tree.size() << std::endl;
-              // std::cout << "iter: " << iter << std::endl;
               for (int i = 0; i < nodes_near.size(); i++) {
                 if (!check_collision(tree.at(nodes_near.at(i)), new_node)) {
                   float cost = tree.at(nodes_near.at(i)).cost + line_cost(tree.at(nodes_near.at(i)), new_node);
@@ -614,7 +628,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
 
               /** Rewiring **/
               int rewire_count = 0;
-              // std::cout << "int <><><>nodes_near.size(): " << int(nodes_near.size()) << std::endl;
+
               for (int j = 0; j < int(nodes_near.size()); j++) {
                 float new_cost = tree.back().cost + line_cost(new_node, tree.at(nodes_near.at(j)));
                 if (new_cost < tree.at(nodes_near.at(j)).cost) {
@@ -626,8 +640,6 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
                     int old_parent = tree.at(nodes_near.at(j)).parent;
                     tree.at(nodes_near.at(j)).parent = tree.size() - 1;
                     tree.back().children.push_back(nodes_near.at(j));
-                    // std::cout << "tree.at(nodes_near.at(j)).children.size(): " << tree.at(nodes_near.at(j)).children.size() << std::endl;
-                    // std::cout << "tree.at(old_parent).children.size(): " << tree.at(old_parent).children.size() << std::endl;
                     // remove it from its old parent's children list
                     std::vector<int>::iterator start = tree.at(old_parent).children.begin();
                     std::vector<int>::iterator end = tree.at(old_parent).children.end();
@@ -642,50 +654,64 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
                 nodes_near_goal.push_back(tree.back());
               }
             }
-            // std::cout << "koniec pętli" << std::endl;
             /** check if goal reached and recover path with the minimum cost**/
             if (iter > MIN_ITER && !nodes_near_goal.empty()) {
               Node_struct best = *min_element(nodes_near_goal.begin(), nodes_near_goal.end(), comp_cost); 
               std::vector<Node_struct> path_found = find_path(tree, nodes_near_goal.back());
 
-              initialize_marker(
-                path_dots, "map", "path", 20, visualization_msgs::msg::Marker::POINTS, red, 0.08);
-
-              for (int i = 0; i < path_found.size(); i++) {
-                geometry_msgs::msg::Point p;
-                p.x = path_found.at(i).x;
-                p.y = path_found.at(i).y;
-                path_dots.points.push_back(p);
-              }
-              double RRT_INTERVAL = 0.2;
-              std::vector<geometry_msgs::msg::Point> path_processed;
-              for (int i = 0; i < path_dots.points.size() - 1; i++) {
-                path_processed.push_back(path_dots.points[i]);
-                double dist = sqrt(
-                  pow(path_dots.points[i + 1].x - path_dots.points[i].x, 2) +
-                  pow(path_dots.points[i + 1].y - path_dots.points[i].y, 2));
-                if (dist < RRT_INTERVAL) continue;
-                int num = static_cast<int>(ceil(dist / RRT_INTERVAL));
-                for (int j = 1; j < num; j++) {
-                  geometry_msgs::msg::Point p;
-                  p.x = path_dots.points[i].x + j * ((path_dots.points[i + 1].x - path_dots.points[i].x) / num);
-                  p.y = path_dots.points[i].y + j * ((path_dots.points[i + 1].y - path_dots.points[i].y) / num);
-                  path_processed.push_back(p);
+              // Check for collisions along the found path
+              bool path_valid = true;
+              for (size_t i = 0; i < path_found.size() - 1; i++) {
+                if (check_collision(path_found[i], path_found[i + 1])) {
+                  std::cout << "collision detected along path" << std::endl;
+                  path_valid = false;
+                  break;
                 }
               }
 
-              path_dots.points = path_processed;
-              marker_publisher_->publish(path_dots);
-              //track_path(path);
-              visualize_tree(tree);
-              std::cout << "path found" << std::endl;
-              last_curr_goal_ind_ = curr_goal_ind_;
-              break;
+              if(path_valid)
+              {
+                initialize_marker(path_dots, "map", "path", 20, visualization_msgs::msg::Marker::POINTS, green, 0.04);
+
+                for (int i = 0; i < path_found.size(); i++) {
+                  geometry_msgs::msg::Point p;
+                  p.x = path_found.at(i).x;
+                  p.y = path_found.at(i).y;
+                  path_dots.points.push_back(p);
+                }
+
+                double RRT_INTERVAL = 0.1;
+                std::vector<geometry_msgs::msg::Point> path_processed;
+                for (int i = 0; i < path_dots.points.size() - 1; i++) {
+                  path_processed.push_back(path_dots.points[i]);
+                  double dist = sqrt(
+                    pow(path_dots.points[i + 1].x - path_dots.points[i].x, 2) +
+                    pow(path_dots.points[i + 1].y - path_dots.points[i].y, 2));
+                  if (dist < RRT_INTERVAL) continue;
+                  int num = static_cast<int>(ceil(dist / RRT_INTERVAL));
+                  for (int j = 1; j < num; j++) {
+                    geometry_msgs::msg::Point p;
+                    p.x = path_dots.points[i].x + j * ((path_dots.points[i + 1].x - path_dots.points[i].x) / num);
+                    p.y = path_dots.points[i].y + j * ((path_dots.points[i + 1].y - path_dots.points[i].y) / num);
+                    path_processed.push_back(p);
+                  }
+                }
+                path_dots.points = path_processed;
+                marker_publisher_->publish(path_dots);
+                //track_path(path);
+                visualize_tree(tree);
+                // std::cout << "path found" << std::endl;
+                break;
+              }
+              else
+              {
+                nodes_near_goal.clear();
+              }
             }
           }
 
           if (nodes_near_goal.empty()) {
-            std::cout << "Couldn't find a path" << std::endl;
+            // std::cout << "Couldn't find a path" << std::endl;
           }
         }
       // }
@@ -703,9 +729,6 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
         "/sensing/lidar/scan",
         qos, // Rozmiar kolejki subskrybenta
         [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-            
-      
-      // map_updated_ = map_;
 
       // only reset map when the car has made enough progress
       if(this->now().seconds() - last_time_ > 1.0){
@@ -747,52 +770,15 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
 
 
 
-
-      // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
-      // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
-      // distances_array = msg->ranges;
-      // for (int i = 0; i < msg->ranges.size(); i++)
-      // {
-      //   distances_array[i] = msg->ranges[i];
-      // }
-
-      // std::cout << "before calc idx" << car_pose.position.x << " " << car_pose.position.y <<
-      // std::endl; define scan start global angle float start_angle = msg->angle_min -
-      // car_pose.orientation.z;
-      // float angle_increment = msg->angle_increment;
       auto obstacle_point_msg = geometry_msgs::msg::PointStamped();
-      // convert quaternion to euler
-      // tf2::Quaternion q(
-      //   car_pose.orientation.x, car_pose.orientation.y, car_pose.orientation.z,
-      //   car_pose.orientation.w);
-      // tf2::Matrix3x3 m(q);
-      // double roll, pitch, yaw;
-      // m.getRPY(roll, pitch, yaw);
-      // size_t self_idx;
-      // const auto & current_pose = car_pose;
-      // const auto & trajectory = trajectory_;
-      // autoware_auto_planning_msgs::msg::Trajectory trajectory = trajectory_;
 
-      // if car pose is not x=-0.0097019 and y=-0.580195, calculate the closest index
       if (car_pose.position.x != -0.0097019 and car_pose.position.y != -0.580195) {
         calcClosestIndex(waypoints_, car_pose, self_idx);
       }
-      // calcClosestIndex(trajectory, current_pose, self_idx);
-      // current_pose = trajectory.at(self_idx+30).pose;
-
-      // std::cout << "self_idx: " << self_idx << std::endl;
-      // std::cout << car_pose.position.x << " " << car_pose.position.y << std::endl;
-      // std::cout << "predicted_self_idx: " << predicted_self_idx << std::endl;
-      // std::cout << "waypoints_[predicted_self_idx]: " << waypoints_[predicted_self_idx].x << " "
-      //           << waypoints_[predicted_self_idx].y << std::endl;
 
       // trajectory points
       for (int j = self_idx; j < (self_idx + 30) % 270; j++) {
         auto temp_point = waypoints_.at(j);
-        // std::cout << "tr_point: " << j << std::endl;
-        // create float vector of points (x,y)
-        // std::vector<std::pair<float, float>> points;
-
         // laser scan points
         for (int i = 420; i < msg->ranges.size() - 420; i++) {
           int counter = 0;

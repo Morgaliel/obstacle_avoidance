@@ -97,7 +97,6 @@ public:
   void reset_goal();
   void advance_goal();
   int find_closest_waypoint(const vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose& pose);
-  bool is_current_goal_changed();
   // void track_path(const nav_msgs::msg::Path& path);
 
 private:
@@ -113,7 +112,6 @@ private:
   size_t self_idx;
   size_t predicted_self_idx;
   size_t curr_goal_ind_;
-  size_t last_curr_goal_ind_;
   double last_time_;
 
   Node_struct start_node;
