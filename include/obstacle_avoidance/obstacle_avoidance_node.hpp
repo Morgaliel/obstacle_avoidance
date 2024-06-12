@@ -122,7 +122,12 @@ private:
   visualization_msgs::msg::Marker goal_marker;
   visualization_msgs::msg::Marker tree_nodes;
   visualization_msgs::msg::Marker tree_branch;
+  visualization_msgs::msg::Marker path_dots;
   // MarkerVisualizer* goal_viz;
+
+  std_msgs::msg::ColorRGBA red;
+  std_msgs::msg::ColorRGBA green;
+  std_msgs::msg::ColorRGBA blue;
 
   
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_subscriber_;
