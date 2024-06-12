@@ -79,7 +79,7 @@ public:
   std::vector<Node_struct> find_path(std::vector<Node_struct> & tree, Node_struct & node);
   void visualize_tree(vector<Node_struct> & tree);
   void initialize_marker(
-    visualization_msgs::msg::Marker & marker, onst std::string & frame_id, const std::string & ns,
+    visualization_msgs::msg::Marker & marker, const std::string & frame_id, const std::string & ns,
     int32_t id, int32_t type, const std_msgs::msg::ColorRGBA & color, double scale);
   void load_waypoints(const std::string & filename);
   void visualize_map();
