@@ -1,9 +1,3 @@
-//
-// Created by Yuwei Wang on 11/9/19.
-//
-//
-// Author: Yuwei Wang
-
 #ifndef SRC_OCCUPANCY_GRID_HPP
 #define SRC_OCCUPANCY_GRID_HPP
 

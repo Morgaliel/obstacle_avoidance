@@ -1,5 +1,3 @@
-// Created by yuwei on 11/14/19.
-
 #ifndef SRC_VISUALIZATION_HPP
 #define SRC_VISUALIZATION_HPP
 

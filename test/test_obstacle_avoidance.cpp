@@ -18,6 +18,4 @@
 TEST(TestObstacleAvoidance, TestHello) {
   std::unique_ptr<obstacle_avoidance::ObstacleAvoidance> obstacle_avoidance_ =
     std::make_unique<obstacle_avoidance::ObstacleAvoidance>();
-  auto result = obstacle_avoidance_->foo(999);
-  EXPECT_EQ(result, 999);
 }

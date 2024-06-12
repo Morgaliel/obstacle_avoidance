@@ -23,10 +23,4 @@ ObstacleAvoidance::ObstacleAvoidance()
 {
 }
 
-int64_t ObstacleAvoidance::foo(int64_t bar) const
-{
-  std::cout << "Hello World, " << bar << std::endl;
-  return bar;
-}
-
 }  // namespace obstacle_avoidance

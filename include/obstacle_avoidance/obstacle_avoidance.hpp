@@ -27,7 +27,6 @@ class OBSTACLE_AVOIDANCE_PUBLIC ObstacleAvoidance
 {
 public:
   ObstacleAvoidance();
-  int64_t foo(int64_t bar) const;
 };
 
 }  // namespace obstacle_avoidance
