@@ -79,6 +79,7 @@ public:
   int nearest(std::vector<Node_struct> &tree, std::vector<double> &sampled_point);
   Node_struct steer(Node_struct &nearest_node, std::vector<double> &sampled_point);
   bool check_collision(Node_struct &nearest_node, Node_struct &new_node);
+  bool check_collision_2(geometry_msgs::msg::Point & nearest_node, geometry_msgs::msg::Point & new_node);
   std::vector<int> near(std::vector<Node_struct> &tree, Node_struct& node);
   double line_cost(Node_struct &n1, Node_struct &n2);
   bool is_goal(Node_struct &latest_added_node, double goal_x, double goal_y);
@@ -97,19 +98,21 @@ public:
   void reset_goal();
   void advance_goal();
   int find_closest_waypoint(const vector<geometry_msgs::msg::Point>& waypoints, const geometry_msgs::msg::Pose& pose);
+  autoware_auto_planning_msgs::msg::Trajectory createTrajectory(const std::vector<Node_struct> & points);
   // void track_path(const nav_msgs::msg::Path& path);
 
 private:
   ObstacleAvoidancePtr obstacle_avoidance_{nullptr};
   int64_t param_name_{123};
   autoware_auto_planning_msgs::msg::Trajectory trajectory_;
-  autoware_auto_planning_msgs::msg::Trajectory predicted_trajectory_;
+  autoware_auto_planning_msgs::msg::Trajectory avoidance_trajectory_;
   std::array<geometry_msgs::msg::Pose, 271> poses_array;
   std::array<geometry_msgs::msg::Pose, 10> predicted_poses_array;
   // std::array<float, 1080> distances_array; //1080 pktow +- 135 stopni
   geometry_msgs::msg::Pose car_pose;
   std::vector<geometry_msgs::msg::Point> obstacle_points;
   size_t self_idx;
+  size_t target_idx;
   size_t predicted_self_idx;
   size_t curr_goal_ind_;
   double last_time_;
@@ -119,6 +122,8 @@ private:
   std::vector<geometry_msgs::msg::Point> waypoints_;
   bool is_waypoints_set = false;
   std::mt19937 gen_;
+
+  bool obstacle_detected = false;
 
   visualization_msgs::msg::Marker goal_marker;
   visualization_msgs::msg::Marker tree_nodes;
@@ -146,6 +151,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_nodes_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_branches_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr obstacle_viz_pub_;
+  rclcpp::Publisher<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr obstacle_avoidance_trajectory_pub_;
 
 
   // tf2 listener components
@@ -155,6 +161,7 @@ private:
 
   nav_msgs::msg::OccupancyGrid map_;
   nav_msgs::msg::OccupancyGrid map_updated_;
+  nav_msgs::msg::OccupancyGrid map_updated_2_;
 };
 }  // namespace obstacle_avoidance
 

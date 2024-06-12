@@ -17,18 +17,21 @@
 namespace obstacle_avoidance
 {
 
-const int MAX_ITER = 600; //150
-const int MIN_ITER = 500; //100
+const int MAX_ITER = 1200; //150
+const int MIN_ITER = 1000; //100
 const double STD = 1.5;  // standard deviation for normal distribution
 const double STEER_RANGE = 0.3; //0.3
 const float NEAR_RANGE = 1.0;
 const double GOAL_THRESHOLD = 0.15;
-const float GOAL_AHEAD_DIST = 2.5;
+const float GOAL_AHEAD_DIST = 3.5;
 const double X_SAMPLE_RANGE = 3;
 const double Y_SAMPLE_RANGE = 3;
 const float SCAN_RANGE = 3.5;
-const float MARGIN = 0.1;
-const float DETECTED_OBS_MARGIN = 0.2;
+const float MARGIN = 0.01;
+const float MARGIN_2 = 0.18;
+const float DETECTED_OBS_MARGIN = 0.01;
+const float DETECTED_OBS_MARGIN_2 = 0.3;
+const float VELOCITY = 1.5;
 const string file_name =
   "/home/max/autoware/src/universe/external/trajectory_loader/data/trajectory.csv";
 
@@ -44,7 +47,9 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
     map_ = *msg;
     if (map_updated_.data.empty()) {
       map_updated_ = map_;
+      map_updated_2_ = map_;
       occupancy_grid::inflate_map(map_updated_, MARGIN);
+      occupancy_grid::inflate_map(map_updated_2_, MARGIN_2);
     }
   });
 
@@ -55,6 +60,8 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   tree_branches_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/tree_branches", 10);
   map_update_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map_updated", 10);
   obstacle_viz_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/obstacle_viz", 10);
+  obstacle_avoidance_trajectory_pub_ = this->create_publisher<autoware_auto_planning_msgs::msg::Trajectory>("/planning/racing_planner/avoidance/trajectory", 10);
+
 
   // Initialize colors
   red.r = 1.0;
@@ -76,7 +83,7 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
     std::chrono::milliseconds(10), std::bind(&ObstacleAvoidanceNode::on_timer, this));
   subscribeToCarPose();
   subscribeToLaserScan();
-  // subscribeToTrajectory();
+  subscribeToTrajectory();
   // subscribeToPredictedTrajectory();
 
   visualize_map();
@@ -339,32 +346,43 @@ Node_struct ObstacleAvoidanceNode::steer(
   return new_node;
 }
 
-// bool ObstacleAvoidanceNode::check_collision(Node_struct & nearest_node, Node_struct & new_node)
-// {
-//   // This method returns a boolean indicating if the path between the
-//   // nearest node and the new node created from steering is collision free
-
-//   bool collision = false;
-//   int x_cell_diff = abs(ceil((nearest_node.x - new_node.x) / map_updated_.info.resolution));
-//   int y_cell_diff = abs(ceil((nearest_node.y - new_node.y) / map_updated_.info.resolution));
-
-//   double dt = 1.0 / max(x_cell_diff, y_cell_diff);
-//   double t = 0.0;
-//   for (int i = 0; i <= max(x_cell_diff, y_cell_diff); i++) {
-//     double x = nearest_node.x + t * (new_node.x - nearest_node.x);
-//     double y = nearest_node.y + t * (new_node.y - nearest_node.y);
-//     if (occupancy_grid::is_xy_occupied(map_updated_, x, y)) {
-//       collision = true;
-//       std::cout << "collision detected" << std::endl;
-//       break;
-//     }
-//     t += dt;
-//   }
-//   // std::cout << "collision: " << collision << std::endl;
-//   return collision;
-// }
-
 bool ObstacleAvoidanceNode::check_collision(Node_struct & nearest_node, Node_struct & new_node)
+{
+  // This method returns a boolean indicating if the path between the
+  // nearest node and the new node created from steering is collision free
+
+  bool collision = false;
+
+  // Calculate differences
+  double x_diff = new_node.x - nearest_node.x;
+  double y_diff = new_node.y - nearest_node.y;
+
+  // Calculate the number of steps needed based on the maximum difference
+  double resolution = map_updated_.info.resolution;
+  int x_steps = std::ceil(std::abs(x_diff) / resolution);
+  int y_steps = std::ceil(std::abs(y_diff) / resolution);
+  int num_steps = std::max(x_steps, y_steps);
+
+  // Calculate step increments
+  double x_increment = x_diff / num_steps;
+  double y_increment = y_diff / num_steps;
+
+  // Iterate over the line and check for collisions
+  for (int i = 0; i <= num_steps; ++i) {
+    double x = nearest_node.x + i * x_increment;
+    double y = nearest_node.y + i * y_increment;
+
+    if (occupancy_grid::is_xy_occupied(map_updated_2_, x, y)) {
+      collision = true;
+      // std::cout << "collision detected at (" << x << ", " << y << ")" << std::endl;
+      break;
+    }
+  }
+
+  return collision;
+}
+
+bool ObstacleAvoidanceNode::check_collision_2(geometry_msgs::msg::Point & nearest_node, geometry_msgs::msg::Point & new_node)
 {
   // This method returns a boolean indicating if the path between the
   // nearest node and the new node created from steering is collision free
@@ -701,6 +719,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
                 //track_path(path);
                 visualize_tree(tree);
                 // std::cout << "path found" << std::endl;
+                avoidance_trajectory_ = createTrajectory(path_found);
                 break;
               }
               else
@@ -731,9 +750,11 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
         [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
 
       // only reset map when the car has made enough progress
-      if(this->now().seconds() - last_time_ > 1.0){
+      if(this->now().seconds() - last_time_ > 0.2){
           map_updated_ = map_; // might be expensive to copy
+          map_updated_2_ = map_;
           occupancy_grid::inflate_map(map_updated_, MARGIN);
+          occupancy_grid::inflate_map(map_updated_2_, MARGIN_2);
           last_time_ = this->now().seconds();
       }
 
@@ -761,6 +782,7 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
 
             if (!occupancy_grid::is_xy_occupied(map_, pos_in_map.x(), pos_in_map.y())){
                 occupancy_grid::inflate_cell(map_updated_, occupancy_grid::xy2ind(map_updated_, pos_in_map.x(), pos_in_map.y()), DETECTED_OBS_MARGIN, 100);
+                occupancy_grid::inflate_cell(map_updated_2_, occupancy_grid::xy2ind(map_updated_2_, pos_in_map.x(), pos_in_map.y()), DETECTED_OBS_MARGIN_2, 100);
             }
           }
       }
@@ -834,18 +856,79 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
     });
 }
 
-// void ObstacleAvoidanceNode::subscribeToTrajectory()
-// {
-//   trajectory_subscriber_ =
-//   this->create_subscription<autoware_auto_planning_msgs::msg::Trajectory>(
-//     "/planning/racing_planner/trajectory",
-//     300,  // Rozmiar kolejki subskrybenta
-//     [this](const autoware_auto_planning_msgs::msg::Trajectory::SharedPtr msg) {
-//       // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
-//       // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
-//       trajectory_ = *msg;
-//     });
-// }
+autoware_auto_planning_msgs::msg::Trajectory ObstacleAvoidanceNode::createTrajectory(const std::vector<Node_struct> & points)
+{
+  autoware_auto_planning_msgs::msg::Trajectory trajectory;
+
+  trajectory.header.frame_id = "map";
+
+  for (auto & point : points) {
+    autoware_auto_planning_msgs::msg::TrajectoryPoint trajectory_point;
+    geometry_msgs::msg::Pose pose;
+    // auto q = tier4_autoware_utils::createQuaternionFromYaw(point[2]);
+    pose.position.x = point.x;
+    pose.position.y = point.y;
+    pose.position.z = 0.0;
+    // pose.orientation = q;
+
+    trajectory_point.pose = pose;
+
+    trajectory_point.longitudinal_velocity_mps = VELOCITY;
+
+    trajectory.points.push_back(trajectory_point);
+  }
+
+  return trajectory;
+}
+
+void ObstacleAvoidanceNode::subscribeToTrajectory()
+{
+  trajectory_subscriber_ =
+  this->create_subscription<autoware_auto_planning_msgs::msg::Trajectory>(
+    "/planning/racing_planner/trajectory",
+    300,  // Rozmiar kolejki subskrybenta
+    [this](const autoware_auto_planning_msgs::msg::Trajectory::SharedPtr msg) {
+      // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
+      // Możesz umieścić tutaj logikę przetwarzania wiadomości LaserScan
+      trajectory_ = *msg;
+
+      //obstacle detection
+      //if obstacle
+      //avoidance_trajectory
+      //else
+      //trajectory
+      if (car_pose.position.x != -0.0097019 and car_pose.position.y != -0.580195) {
+        calcClosestIndex(waypoints_, car_pose, self_idx);
+      }
+      //check_collision with waypoints until curr_goal_ind_
+      if (!obstacle_detected) //obstacle is not detected, trying to detect
+      {
+        for(int i = self_idx; i < (self_idx + 30) % 270; i++)
+        {
+          if(check_collision_2(waypoints_.at(i), waypoints_.at(i+1)))
+          {
+            std::cout << "obstacle detected along path" << std::endl;
+            obstacle_detected = true;
+            target_idx = curr_goal_ind_ + 5;
+            break;
+          }
+        }
+        obstacle_avoidance_trajectory_pub_->publish(trajectory_);
+      }
+      else //obstacle is detected
+      {
+        
+        obstacle_avoidance_trajectory_pub_->publish(avoidance_trajectory_);
+        if(self_idx == target_idx)
+        {
+          obstacle_detected = false;
+          std::cout << "manouver completed" << std::endl;
+        }
+      }
+
+      // obstacle_avoidance_trajectory_pub_->publish(avoidance_trajectory_);
+    });
+}
 
 // // make subscriber to /control/trajectory_follower/lateral/predicted_trajectory
 // void ObstacleAvoidanceNode::subscribeToPredictedTrajectory()
