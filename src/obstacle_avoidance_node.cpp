@@ -17,15 +17,15 @@
 namespace obstacle_avoidance
 {
 
-const int MAX_ITER = 30;
-const int MIN_ITER = 20;
+const int MAX_ITER = 120;
+const int MIN_ITER = 100;
 const double STD = 1.5;  // standard deviation for normal distribution
-const double STEER_RANGE = 0.3;
+const double STEER_RANGE = 0.2; //0.3
 const float NEAR_RANGE = 1.0;
 const double GOAL_THRESHOLD = 0.15;
-const float GOAL_AHEAD_DIST = 2.5;
-const double X_SAMPLE_RANGE = 2;
-const double Y_SAMPLE_RANGE = 2;
+const float GOAL_AHEAD_DIST = 3.5;
+const double X_SAMPLE_RANGE = 3;
+const double Y_SAMPLE_RANGE = 3;
 const float SCAN_RANGE = 3.5;
 const float MARGIN = 0.18;
 const float DETECTED_OBS_MARGIN = 0.2;
@@ -44,37 +44,10 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   map_subscriber_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
   "/map", 10, [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
     map_ = *msg;
-    map_updated_ = map_;
-    occupancy_grid::inflate_map(map_, MARGIN);
-        // Open a file in write mode
-    // std::ofstream outfile("map.txt", std::ios_base::app); // Append mode
-
-    // // Check if the file is open
-    // if (!outfile.is_open())
-    // {
-    //   RCLCPP_ERROR(this->get_logger(), "Failed to open file");
-    //   return;
-    // }
-
-    // // Write the data to the file
-    // outfile << "Map Info: \n";
-    // outfile << "Width: " << map_.info.width << "\n";
-    // outfile << "Height: " << map_.info.height << "\n";
-    // outfile << "Resolution: " << map_.info.resolution << "\n";
-    // outfile << "Origin: [" << map_.info.origin.position.x << ", " << map_.info.origin.position.y << ", " << map_.info.origin.position.z << "]\n";
-    // outfile << "Data: \n";
-
-    // for (size_t i = 0; i < map_.data.size(); ++i)
-    // {
-    //   outfile << static_cast<int>(map_.data[i]) << " ";
-    //   if ((i + 1) % map_.info.width == 0)
-    //   {
-    //     outfile << "\n";
-    //   }
-    // }
-
-    // // Close the file
-    // outfile.close();
+    if (map_updated_.data.empty()) {
+      map_updated_ = map_;
+      occupancy_grid::inflate_map(map_updated_, MARGIN);
+    }
   });
 
   obstacle_publisher_ = this->create_publisher<geometry_msgs::msg::PointStamped>("/obstacle_point", 100);
@@ -93,6 +66,8 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   blue.b = 1.0;
   blue.a = 1.0;
 
+  last_curr_goal_ind_ = -1;
+
   // Set up markers
   initialize_marker(
     goal_marker, "map", "goal", 0, visualization_msgs::msg::Marker::SPHERE, green, 0.3);
@@ -104,8 +79,8 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   timer_ = this->create_wall_timer(
     std::chrono::milliseconds(10), std::bind(&ObstacleAvoidanceNode::on_timer, this));
   subscribeToCarPose();
-  // subscribeToTrajectory();
   subscribeToLaserScan();
+  // subscribeToTrajectory();
   // subscribeToPredictedTrajectory();
 
   visualize_map();
@@ -114,6 +89,7 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
       "/home/max/autoware/src/universe/external/trajectory_loader/data/trajectory.csv");
   }
   reset_goal();
+  last_time_ = this->now().seconds();
 
 }
 
@@ -188,140 +164,7 @@ void ObstacleAvoidanceNode::on_timer()
   } catch (tf2::TransformException & ex) {
     RCLCPP_WARN(this->get_logger(), "Could not transform: %s", ex.what());
   }
-
-  // car_pose.position.x = transform_stamped.transform.translation.x;
-  // car_pose.position.y = transform_stamped.transform.translation.y;
-
-  // std::cout << "Car pose: " << car_pose.position.x << " " << car_pose.position.y << std::endl;
-  // start_node.x = car_pose.position.x;
-  // start_node.y = car_pose.position.y;
-  // start_node.parent = 0;
-  // start_node.cost = 0.0;
-  // start_node.is_root = true;
-  // // Get Goal
-  // get_current_goal();
-
-  // std::vector<Node_struct> tree;
-  // std::vector<Node_struct> nodes_near_goal;
-
-  // tree.clear();
-  // tree.push_back(start_node);
-  // if (waypoints_.size() > 0) {
-  //   for (int iter = 0; iter < MAX_ITER; iter++) {
-  //     std::vector<double> sampled_point = sample();
-  //     int nearest_ind = nearest(tree, sampled_point);
-  //     Node_struct new_node = steer(tree.at(nearest_ind), sampled_point);
-  //     if (!check_collision(tree.at(nearest_ind), new_node)) {
-  //       std::vector<int> nodes_near = near(tree, new_node);
-  //       tree.push_back(new_node);
-
-  //       /** connect new_node to the node in the neighborhood with the minimum cost **/
-  //       int min_cost_node_ind = nearest_ind;
-  //       float min_cost = tree.at(nearest_ind).cost + line_cost(tree.at(nearest_ind), new_node);
-  //       std::cout << "nodes_near.size(): " << nodes_near.size() << std::endl;
-  //       std::cout << "tree.size(): " << tree.size() << std::endl;
-  //       for (int i = 0; i < nodes_near.size(); i++) {
-  //         if (!check_collision(tree.at(nodes_near.at(i)), new_node)) {
-  //           float cost =
-  //             tree.at(nodes_near.at(i)).cost + line_cost(tree.at(nodes_near.at(i)), new_node);
-  //           if (cost < min_cost) {
-  //             min_cost_node_ind = nodes_near.at(i);
-  //             min_cost = cost;
-  //           }
-  //         }
-  //       }
-
-  //       tree.back().is_root = false;
-  //       tree.back().cost = min_cost;
-  //       // add edge
-  //       tree.back().parent = min_cost_node_ind;
-  //       tree.at(min_cost_node_ind).children.push_back(tree.size() - 1);
-
-  //       /** Rewiring **/
-  //       int rewire_count = 0;
-  //       for (int j = 0; j < int(nodes_near.size()); j++) {
-  //         float new_cost = tree.back().cost + line_cost(new_node, tree.at(nodes_near.at(j)));
-  //         if (new_cost < tree.at(nodes_near.at(j)).cost) {
-  //           if (!check_collision(tree.at(nodes_near.at(j)), new_node)) {
-  //             // rewire: update parent, cost and costs of all children;
-  //             float cost_change = new_cost - tree.at(nodes_near.at(j)).cost;
-  //             tree.at(nodes_near.at(j)).cost = new_cost;
-  //             // assign new_node to be its new parent
-  //             int old_parent = tree.at(nodes_near.at(j)).parent;
-  //             tree.at(nodes_near.at(j)).parent = tree.size() - 1;
-  //             tree.back().children.push_back(nodes_near.at(j));
-  //             // remove it from its old parent's children list
-  //             std::vector<int>::iterator start = tree.at(old_parent).children.begin();
-  //             std::vector<int>::iterator end = tree.at(old_parent).children.end();
-  //             tree.at(old_parent).children.erase(remove(start, end, nodes_near.at(j)), end);
-  //             // update_children_cost(tree, nodes_near.at(j), cost_change); //
-  //             optional(expensive)
-  //           }
-  //         }
-  //         rewire_count++;
-  //       }
-  //       // cout<<"rewire: "<<rewire_count<<endl;
-  //       if (is_goal(
-  //             tree.back(), waypoints_[predicted_self_idx].x, waypoints_[predicted_self_idx].y)) {
-  //         nodes_near_goal.push_back(tree.back());
-  //       }
-  //     }
-  //     /** check if goal reached and recover path with the minimum cost**/
-  //     if (iter > MIN_ITER && !nodes_near_goal.empty()) {
-  //       Node_struct best = *min_element(nodes_near_goal.begin(), nodes_near_goal.end(),
-  //       comp_cost); std::vector<Node_struct> path_found = find_path(tree,
-  //       nodes_near_goal.back());
-
-  //       visualization_msgs::msg::Marker path_dots;
-  //       path_dots.header.frame_id = "map";
-  //       path_dots.id = 20;
-  //       path_dots.ns = "path";
-  //       path_dots.type = visualization_msgs::msg::Marker::POINTS;
-  //       path_dots.scale.x = path_dots.scale.y = path_dots.scale.z = 0.08;
-  //       path_dots.action = visualization_msgs::msg::Marker::ADD;
-  //       path_dots.pose.orientation.w = 1.0;
-  //       path_dots.color.g = 0.0;
-  //       path_dots.color.r = 1.0;
-  //       path_dots.color.a = 1.0;
-
-  //       for (int i = 0; i < path_found.size(); i++) {
-  //         geometry_msgs::msg::Point p;
-  //         p.x = path_found.at(i).x;
-  //         p.y = path_found.at(i).y;
-  //         path_dots.points.push_back(p);
-  //       }
-  //       double RRT_INTERVAL = 0.2;
-  //       std::vector<geometry_msgs::msg::Point> path_processed;
-  //       for (int i = 0; i < path_dots.points.size() - 1; i++) {
-  //         path_processed.push_back(path_dots.points[i]);
-  //         double dist = sqrt(
-  //           pow(path_dots.points[i + 1].x - path_dots.points[i].x, 2) +
-  //           pow(path_dots.points[i + 1].y - path_dots.points[i].y, 2));
-  //         if (dist < RRT_INTERVAL) continue;
-  //         int num = static_cast<int>(ceil(dist / RRT_INTERVAL));
-  //         for (int j = 1; j < num; j++) {
-  //           geometry_msgs::msg::Point p;
-  //           p.x = path_dots.points[i].x +
-  //                 j * ((path_dots.points[i + 1].x - path_dots.points[i].x) / num);
-  //           p.y = path_dots.points[i].y +
-  //                 j * ((path_dots.points[i + 1].y - path_dots.points[i].y) / num);
-  //           path_processed.push_back(p);
-  //         }
-  //       }
-
-  //       path_dots.points = path_processed;
-  //       marker_publisher_->publish(path_dots);
-  //       //            track_path(path);
-  //       visualize_tree(tree);
-  //       std::cout << "path found" << std::endl;
-  //       break;
-  //     }
-  //   }
-
-  //   if (nodes_near_goal.empty()) {
-  //     std::cout << "Couldn't find a path" << std::endl;
-  //   }
-  // }
+  //ta funkcja mi się wywala jak mam tutaj rrt
 }
 
 inline double ObstacleAvoidanceNode::calculate_dist2(double x1, double x2, double y1, double y2)
@@ -429,9 +272,6 @@ std::vector<double> ObstacleAvoidanceNode::sample_point()
   // This method returns a sampled point from the free space
 
   std::vector<double> sampled_point;
-
-  // double x = car_pose.position.x + uni_dist_(gen_)*X_SAMPLE_RANGE;
-  // double y = car_pose.position.y + uni_dist_(gen_)*Y_SAMPLE_RANGE;
 
   // std::cout << "widać że się wywołuje" << std::endl;
   std::normal_distribution<double> norm_dist_x(
@@ -576,16 +416,10 @@ std::vector<int> ObstacleAvoidanceNode::near(std::vector<Node_struct> & tree, No
 
 void ObstacleAvoidanceNode::visualize_tree(std::vector<Node_struct> & tree)
 {
-  // geometry_msgs::msg::Pose goal_pose;
-  // goal_pose.orientation.w = 1.0;
-  // goal_pose.position.x = waypoints_.at(curr_goal_ind_).x;
-  // goal_pose.position.y = waypoints_.at(curr_goal_ind_).y;
-
   goal_marker.pose.orientation.w = 1.0;
   goal_marker.pose.position.x = waypoints_.at(curr_goal_ind_).x;
   goal_marker.pose.position.y = waypoints_.at(curr_goal_ind_).y;
   goal_marker.pose.position.z = 0.0;
-  // goal_viz_publisher_->set_pose(goal_pose);
   goal_viz_publisher_->publish(goal_marker);
 
   // Plot tree
@@ -689,25 +523,9 @@ bool ObstacleAvoidanceNode::calcClosestIndex(
   pose, size_t & output_closest_idx, const double dist_thr, const double angle_thr)
 {
   double dist_min = std::numeric_limits<double>::max();
-  // const double yaw_pose = tf2::getYaw(pose.orientation);
   int closest_idx = -1;
-  // std::cout << "waypoints_ point:" << waypoints[0].x << " " << waypoints[0].y << std::endl;
-  // std::cout << "pose point:" << pose.position.x << " " << pose.position.y << std::endl;
   for (int i = 0; i < waypoints.size(); i++) {
     const double dist = calcDist2d(waypoints[i], pose.position);
-
-    /* check distance threshold */
-    // if (dist > dist_thr) {
-    //   continue;
-    // }
-
-    /* check angle threshold */
-    // double yaw_i = tf2::getYaw(getPose(traj, i).orientation);
-    // double yaw_diff = normalizeEulerAngle(yaw_pose - yaw_i);
-
-    // if (std::fabs(yaw_diff) > angle_thr) {
-    //   continue;
-    // }
 
     if (dist < dist_min) {
       dist_min = dist;
@@ -717,6 +535,21 @@ bool ObstacleAvoidanceNode::calcClosestIndex(
   output_closest_idx = static_cast<size_t>(closest_idx);
 
   return closest_idx != -1;
+}
+
+bool ObstacleAvoidanceNode::is_current_goal_changed()
+{
+  // check if the current goal index has changed
+  std::cout << "last_curr_goal_ind_: " << last_curr_goal_ind_ << std::endl;
+  std::cout << "curr_goal_ind_: " << curr_goal_ind_ << std::endl;
+  if(last_curr_goal_ind_ == curr_goal_ind_)
+  {
+    return false;
+  }
+  else
+  {
+    return true;
+  }
 }
 
 void ObstacleAvoidanceNode::subscribeToCarPose()
@@ -731,12 +564,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
     [this](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
       // Funkcja zwrotna wywoływana przy otrzymaniu nowej wiadomości
       car_pose = msg->pose;
-      // std::cout << "Car pose: " << car_pose.position.x << " " << car_pose.position.y << std::endl;
-
-      // calcClosestIndex(waypoints_, car_pose, self_idx);
-      // std::cout << "self_idx: " << self_idx << std::endl;
-
-      // std::cout << "Car pose: " << car_pose.position.x << " " << car_pose.position.y << std::endl;
+      
       start_node.x = car_pose.position.x;
       start_node.y = car_pose.position.y;
       start_node.parent = 0;
@@ -745,141 +573,122 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
       // Get Goal
       get_current_goal();
 
-      std::vector<Node_struct> tree;
-      std::vector<Node_struct> nodes_near_goal;
+      // if(is_current_goal_changed())
+      // {
+        std::vector<Node_struct> tree;
+        std::vector<Node_struct> nodes_near_goal;
 
-      tree.clear();
-      tree.push_back(start_node);
-      if (waypoints_.size() > 0 && car_pose.position.x > 1 && car_pose.position.y != 0) {
-        for (int iter = 0; iter < MAX_ITER; iter++) {
-          // std::cout << "początek pętli" << std::endl; //to widać
-          std::vector<double> sampled_point = sample_point();
-          // std::cout << "essa, środek pętli?" << std::endl; //tego już nie widać
-          int nearest_ind = nearest(tree, sampled_point);
-          Node_struct new_node = steer(tree.at(nearest_ind), sampled_point);
-          if (!check_collision(tree.at(nearest_ind), new_node)) {
-            std::vector<int> nodes_near = near(tree, new_node);
-            tree.push_back(new_node);
-            /** connect new_node to the node in the neighborhood with the minimum cost **/
-            int min_cost_node_ind = nearest_ind;
-            float min_cost = tree.at(nearest_ind).cost + line_cost(tree.at(nearest_ind), new_node); 
-            // std::cout << "nodes_near.size(): " << nodes_near.size() << std::endl;
-            // std::cout << "tree.size(): " << tree.size() << std::endl;
-            // std::cout << "iter: " << iter << std::endl;
-            for (int i = 0; i < nodes_near.size(); i++) {
-              if (!check_collision(tree.at(nodes_near.at(i)), new_node)) {
-                float cost = tree.at(nodes_near.at(i)).cost + line_cost(tree.at(nodes_near.at(i)), new_node);
-                if (cost < min_cost) {
-                  min_cost_node_ind = nodes_near.at(i);
-                  min_cost = cost;
+        tree.clear();
+        tree.push_back(start_node);
+        if (waypoints_.size() > 0 && car_pose.position.x > 1 && car_pose.position.y != 0) {
+          for (int iter = 0; iter < MAX_ITER; iter++) {
+            // std::cout << "początek pętli" << std::endl; //to widać
+            std::vector<double> sampled_point = sample_point();
+            // std::cout << "essa, środek pętli?" << std::endl; //tego już nie widać
+            int nearest_ind = nearest(tree, sampled_point);
+            Node_struct new_node = steer(tree.at(nearest_ind), sampled_point);
+            if (!check_collision(tree.at(nearest_ind), new_node)) {
+              std::vector<int> nodes_near = near(tree, new_node);
+              tree.push_back(new_node);
+              /** connect new_node to the node in the neighborhood with the minimum cost **/
+              int min_cost_node_ind = nearest_ind;
+              float min_cost = tree.at(nearest_ind).cost + line_cost(tree.at(nearest_ind), new_node); 
+              // std::cout << "nodes_near.size(): " << nodes_near.size() << std::endl;
+              // std::cout << "tree.size(): " << tree.size() << std::endl;
+              // std::cout << "iter: " << iter << std::endl;
+              for (int i = 0; i < nodes_near.size(); i++) {
+                if (!check_collision(tree.at(nodes_near.at(i)), new_node)) {
+                  float cost = tree.at(nodes_near.at(i)).cost + line_cost(tree.at(nodes_near.at(i)), new_node);
+                  if (cost < min_cost) {
+                    min_cost_node_ind = nodes_near.at(i);
+                    min_cost = cost;
+                  }
                 }
               }
-            }
 
-            tree.back().is_root = false;
-            tree.back().cost = min_cost;
-            // add edge
-            tree.back().parent = min_cost_node_ind;
-            tree.at(min_cost_node_ind).children.push_back(tree.size() - 1);
+              tree.back().is_root = false;
+              tree.back().cost = min_cost;
+              // add edge
+              tree.back().parent = min_cost_node_ind;
+              tree.at(min_cost_node_ind).children.push_back(tree.size() - 1);
 
-            /** Rewiring **/
-            int rewire_count = 0;
-            // std::cout << "int <><><>nodes_near.size(): " << int(nodes_near.size()) << std::endl;
-            for (int j = 0; j < int(nodes_near.size()); j++) {
-              float new_cost = tree.back().cost + line_cost(new_node, tree.at(nodes_near.at(j)));
-              if (new_cost < tree.at(nodes_near.at(j)).cost) {
-                if (!check_collision(tree.at(nodes_near.at(j)), new_node)) {
-                  // rewire: update parent, cost and costs of all children;
-                  float cost_change = new_cost - tree.at(nodes_near.at(j)).cost;
-                  tree.at(nodes_near.at(j)).cost = new_cost;
-                  // assign new_node to be its new parent
-                  int old_parent = tree.at(nodes_near.at(j)).parent;
-                  tree.at(nodes_near.at(j)).parent = tree.size() - 1;
-                  tree.back().children.push_back(nodes_near.at(j));
-                  // std::cout << "tree.at(nodes_near.at(j)).children.size(): " << tree.at(nodes_near.at(j)).children.size() << std::endl;
-                  // std::cout << "tree.at(old_parent).children.size(): " << tree.at(old_parent).children.size() << std::endl;
-                  // remove it from its old parent's children list
-                  std::vector<int>::iterator start = tree.at(old_parent).children.begin();
-                  std::vector<int>::iterator end = tree.at(old_parent).children.end();
-                  tree.at(old_parent).children.erase(remove(start, end, nodes_near.at(j)), end);
-                  // update_children_cost(tree, nodes_near.at(j), cost_change); //optional(expensive)
+              /** Rewiring **/
+              int rewire_count = 0;
+              // std::cout << "int <><><>nodes_near.size(): " << int(nodes_near.size()) << std::endl;
+              for (int j = 0; j < int(nodes_near.size()); j++) {
+                float new_cost = tree.back().cost + line_cost(new_node, tree.at(nodes_near.at(j)));
+                if (new_cost < tree.at(nodes_near.at(j)).cost) {
+                  if (!check_collision(tree.at(nodes_near.at(j)), new_node)) {
+                    // rewire: update parent, cost and costs of all children;
+                    float cost_change = new_cost - tree.at(nodes_near.at(j)).cost;
+                    tree.at(nodes_near.at(j)).cost = new_cost;
+                    // assign new_node to be its new parent
+                    int old_parent = tree.at(nodes_near.at(j)).parent;
+                    tree.at(nodes_near.at(j)).parent = tree.size() - 1;
+                    tree.back().children.push_back(nodes_near.at(j));
+                    // std::cout << "tree.at(nodes_near.at(j)).children.size(): " << tree.at(nodes_near.at(j)).children.size() << std::endl;
+                    // std::cout << "tree.at(old_parent).children.size(): " << tree.at(old_parent).children.size() << std::endl;
+                    // remove it from its old parent's children list
+                    std::vector<int>::iterator start = tree.at(old_parent).children.begin();
+                    std::vector<int>::iterator end = tree.at(old_parent).children.end();
+                    tree.at(old_parent).children.erase(remove(start, end, nodes_near.at(j)), end);
+                    // update_children_cost(tree, nodes_near.at(j), cost_change); //optional(expensive)
+                  }
                 }
+                rewire_count++;
               }
-              rewire_count++;
+              if (is_goal(tree.back(), waypoints_.at(curr_goal_ind_).x, waypoints_.at(curr_goal_ind_).y))
+              {
+                nodes_near_goal.push_back(tree.back());
+              }
             }
-            // std::cout << "rewire: " << rewire_count << std::endl;
-            // std::cout << "nodes_near_goal.size(): " << nodes_near_goal.size() << std::endl;
-            // std::cout << "waypoints_.size(): " << waypoints_.size() << std::endl;
-            // std::cout << "curr_goal_ind_: " << curr_goal_ind_ << std::endl;
-            // std::cout << "new_node.children.size(): " << new_node.children.size() << std::endl;
-            // std::cout << "Car pose: " << car_pose.position.x << " " << car_pose.position.y << std::endl;
-            // std::cout << "path_found.size(): " << path_found.size() << std::endl;
-            // std::cout << "path_processed.size(): " << path_processed.size() << std::endl;
+            // std::cout << "koniec pętli" << std::endl;
+            /** check if goal reached and recover path with the minimum cost**/
+            if (iter > MIN_ITER && !nodes_near_goal.empty()) {
+              Node_struct best = *min_element(nodes_near_goal.begin(), nodes_near_goal.end(), comp_cost); 
+              std::vector<Node_struct> path_found = find_path(tree, nodes_near_goal.back());
 
+              initialize_marker(
+                path_dots, "map", "path", 20, visualization_msgs::msg::Marker::POINTS, red, 0.08);
 
-            if (is_goal(tree.back(), waypoints_.at(curr_goal_ind_).x, waypoints_.at(curr_goal_ind_).y))
-            {
-              nodes_near_goal.push_back(tree.back());
-            }
-          }
-          // std::cout << "koniec pętli" << std::endl;
-          /** check if goal reached and recover path with the minimum cost**/
-          if (iter > MIN_ITER && !nodes_near_goal.empty()) {
-            Node_struct best = *min_element(nodes_near_goal.begin(), nodes_near_goal.end(), comp_cost); 
-            std::vector<Node_struct> path_found = find_path(tree, nodes_near_goal.back());
-
-            // visualization_msgs::msg::Marker path_dots;
-            // path_dots.header.frame_id = "map";
-            // path_dots.id = 20;
-            // path_dots.ns = "path";
-            // path_dots.type = visualization_msgs::msg::Marker::POINTS;
-            // path_dots.scale.x = path_dots.scale.y = path_dots.scale.z = 0.08;
-            // path_dots.action = visualization_msgs::msg::Marker::ADD;
-            // path_dots.pose.orientation.w = 1.0;
-            // path_dots.color.g = 0.0;
-            // path_dots.color.r = 1.0;
-            // path_dots.color.a = 1.0;
-
-
-            initialize_marker(
-              path_dots, "map", "path", 20, visualization_msgs::msg::Marker::POINTS, red, 0.08);
-
-            for (int i = 0; i < path_found.size(); i++) {
-              geometry_msgs::msg::Point p;
-              p.x = path_found.at(i).x;
-              p.y = path_found.at(i).y;
-              path_dots.points.push_back(p);
-            }
-            double RRT_INTERVAL = 0.2;
-            std::vector<geometry_msgs::msg::Point> path_processed;
-            for (int i = 0; i < path_dots.points.size() - 1; i++) {
-              path_processed.push_back(path_dots.points[i]);
-              double dist = sqrt(
-                pow(path_dots.points[i + 1].x - path_dots.points[i].x, 2) +
-                pow(path_dots.points[i + 1].y - path_dots.points[i].y, 2));
-              if (dist < RRT_INTERVAL) continue;
-              int num = static_cast<int>(ceil(dist / RRT_INTERVAL));
-              for (int j = 1; j < num; j++) {
+              for (int i = 0; i < path_found.size(); i++) {
                 geometry_msgs::msg::Point p;
-                p.x = path_dots.points[i].x + j * ((path_dots.points[i + 1].x - path_dots.points[i].x) / num);
-                p.y = path_dots.points[i].y + j * ((path_dots.points[i + 1].y - path_dots.points[i].y) / num);
-                path_processed.push_back(p);
+                p.x = path_found.at(i).x;
+                p.y = path_found.at(i).y;
+                path_dots.points.push_back(p);
               }
-            }
+              double RRT_INTERVAL = 0.2;
+              std::vector<geometry_msgs::msg::Point> path_processed;
+              for (int i = 0; i < path_dots.points.size() - 1; i++) {
+                path_processed.push_back(path_dots.points[i]);
+                double dist = sqrt(
+                  pow(path_dots.points[i + 1].x - path_dots.points[i].x, 2) +
+                  pow(path_dots.points[i + 1].y - path_dots.points[i].y, 2));
+                if (dist < RRT_INTERVAL) continue;
+                int num = static_cast<int>(ceil(dist / RRT_INTERVAL));
+                for (int j = 1; j < num; j++) {
+                  geometry_msgs::msg::Point p;
+                  p.x = path_dots.points[i].x + j * ((path_dots.points[i + 1].x - path_dots.points[i].x) / num);
+                  p.y = path_dots.points[i].y + j * ((path_dots.points[i + 1].y - path_dots.points[i].y) / num);
+                  path_processed.push_back(p);
+                }
+              }
 
-            path_dots.points = path_processed;
-            marker_publisher_->publish(path_dots);
-            //track_path(path);
-            visualize_tree(tree);
-            std::cout << "path found" << std::endl;
-            break;
+              path_dots.points = path_processed;
+              marker_publisher_->publish(path_dots);
+              //track_path(path);
+              visualize_tree(tree);
+              std::cout << "path found" << std::endl;
+              last_curr_goal_ind_ = curr_goal_ind_;
+              break;
+            }
+          }
+
+          if (nodes_near_goal.empty()) {
+            std::cout << "Couldn't find a path" << std::endl;
           }
         }
-
-        if (nodes_near_goal.empty()) {
-          std::cout << "Couldn't find a path" << std::endl;
-        }
-      }
+      // }
     });
 }
 
@@ -896,7 +705,14 @@ void ObstacleAvoidanceNode::subscribeToLaserScan()
         [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
             
       
-      map_updated_ = map_;
+      // map_updated_ = map_;
+
+      // only reset map when the car has made enough progress
+      if(this->now().seconds() - last_time_ > 1.0){
+          map_updated_ = map_; // might be expensive to copy
+          occupancy_grid::inflate_map(map_updated_, MARGIN);
+          last_time_ = this->now().seconds();
+      }
 
       float angle_min = msg->angle_min;
       float angle_increment = msg->angle_increment;
