@@ -56,7 +56,6 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   tree_branches_pub_ =
     this->create_publisher<visualization_msgs::msg::Marker>("/tree_branches", 10);
   map_update_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map_updated", 10);
-  obstacle_viz_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/obstacle_viz", 10);
   obstacle_avoidance_trajectory_pub_ =
     this->create_publisher<autoware_auto_planning_msgs::msg::Trajectory>(
       "/planning/racing_planner/avoidance/trajectory", 10);
@@ -81,7 +80,7 @@ ObstacleAvoidanceNode::ObstacleAvoidanceNode(const rclcpp::NodeOptions & options
   subscribeToLaserScan();
   subscribeToTrajectory();
 
-  visualize_map();
+  // visualize_map();
   if (waypoints_.empty()) {
     load_waypoints(csv_path);
   }
@@ -117,29 +116,6 @@ void ObstacleAvoidanceNode::load_waypoints(const std::string & filename)
     pose.orientation.w = 1.0;
     waypoints_.push_back(pose);
   }
-}
-
-void ObstacleAvoidanceNode::visualize_map()
-{
-  visualization_msgs::msg::Marker dots;
-  std_msgs::msg::ColorRGBA color;
-  color.r = 1.0;
-  color.g = 0.0;
-  color.b = 0.0;
-  color.a = 1.0;
-  this->initialize_marker(
-    dots, "map", "obstacle", 0, visualization_msgs::msg::Marker::POINTS, color, 0.04);
-
-  for (size_t i = 0; i < map_.data.size(); i++) {
-    if (map_.data[i] == 100) {
-      geometry_msgs::msg::Point p;
-      p.x = occupancy_grid::ind2x(map_, i);
-      p.y = occupancy_grid::ind2y(map_, i);
-      p.z = 0.0;
-      dots.points.push_back(p);
-    }
-  }
-  obstacle_viz_pub_->publish(dots);
 }
 
 bool comp_cost(Node_struct & n1, Node_struct & n2)
@@ -196,7 +172,8 @@ void ObstacleAvoidanceNode::reset_goal()
 
 void ObstacleAvoidanceNode::advance_goal()
 {
-  // advance in waypoints from current goal to a point that is around 0.9*MAX_GOAL_AHEAD distance ahead
+  // advance in waypoints from current goal to a point that is around 0.9*MAX_GOAL_AHEAD distance
+  // ahead
   using namespace occupancy_grid;
   int curr_ind = curr_goal_ind_;
   if (curr_ind >= waypoints_.size()) {
@@ -500,8 +477,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
   qos.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
 
   car_pose_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-    "/localization/cartographer/pose",
-    qos,
+    "/localization/cartographer/pose", qos,
     [this](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
       car_pose = msg->pose;
 
@@ -522,7 +498,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
       if (car_pose.position.x != -0.0097019 and car_pose.position.y != -0.580195) {
         calcClosestIndex(waypoints_, car_pose, self_idx);
       }
-      
+
       if (!obstacle_detected)  // obstacle is not detected, trying to detect
       {
         for (int i = self_idx; i < (self_idx + COLLISION_HORIZON) % 270; i++) {
@@ -544,7 +520,7 @@ void ObstacleAvoidanceNode::subscribeToCarPose()
             if (!check_collision(tree.at(nearest_ind), new_node)) {
               std::vector<int> nodes_near = near(tree, new_node);
               tree.push_back(new_node);
-              // connect new_node to the node in the neighborhood with the minimum cost 
+              // connect new_node to the node in the neighborhood with the minimum cost
               int min_cost_node_ind = nearest_ind;
               float min_cost =
                 tree.at(nearest_ind).cost + line_cost(tree.at(nearest_ind), new_node);

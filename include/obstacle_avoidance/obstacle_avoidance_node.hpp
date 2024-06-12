@@ -127,7 +127,6 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr goal_viz_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_nodes_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tree_branches_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr obstacle_viz_pub_;
   rclcpp::Publisher<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr
     obstacle_avoidance_trajectory_pub_;
 
