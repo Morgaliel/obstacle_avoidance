@@ -154,14 +154,15 @@ void ObstacleAvoidanceNode::reset_goal()
   if (
     (car_pose.position.x == -0.0097019 && car_pose.position.y == -0.580195) ||
     (car_pose.position.x == 0 && car_pose.position.y == 0)) {
-    RCLCPP_INFO(this->get_logger(), "Failed to receive car's pose");
+    RCLCPP_WARN(this->get_logger(), "Failed to receive car's pose");
   } else {
     int closest_ind = find_closest_waypoint(waypoints_, car_pose);
     float closest_dist2 = calculate_dist2(
       waypoints_.at(closest_ind).position.x, car_pose.position.x,
       waypoints_.at(closest_ind).position.y, car_pose.position.y);
     if (closest_dist2 > pow(GOAL_AHEAD_DIST, 2)) {
-      throw std::runtime_error(
+      RCLCPP_WARN(
+        this->get_logger(),
         "Couldn't find a goal in range. Reposition the car somewhere near the waypoints");
     }
     // advance from closest waypoint until one that is around 0.9 GOAL_AHEAD_DIST away
